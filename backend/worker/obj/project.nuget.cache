@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "aHMO3OKirHRXfos/vdkVgFLoGzy7OGpaIyDw5jUlP3b57dJuGzkC9MzihfaPrSl3tVmE++txxhFqSYvB9kwruA==",
+  "success": true,
+  "projectFilePath": "C:\\Studium\\BA Hydroponik\\SensorHUB\\backend\\worker\\CameraWorker.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\luisn\\.nuget\\packages\\microsoft.windows.sdk.net.ref\\10.0.19041.28\\microsoft.windows.sdk.net.ref.10.0.19041.28.nupkg.sha512"
+  ],
+  "logs": []
+}

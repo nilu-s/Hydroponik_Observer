@@ -1,0 +1,127 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from typing import Any, Optional
+
+from fastapi import HTTPException, WebSocket
+
+from .config import LIVE_POLL_INTERVAL_SEC
+from .db import get_setup, insert_reading, list_setups
+from .readings import fetch_node_reading
+
+
+async def fetch_reading(setup_id: str, node_id: Optional[str]) -> Optional[dict[str, Any]]:
+    try:
+        return await fetch_node_reading(setup_id, node_id)
+    except HTTPException:
+        return None
+
+
+class LiveManager:
+    def __init__(self) -> None:
+        self._subscriptions: dict[str, set[WebSocket]] = {}
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._lock = asyncio.Lock()
+
+    async def subscribe(self, setup_id: str, ws: WebSocket) -> None:
+        async with self._lock:
+            self._subscriptions.setdefault(setup_id, set()).add(ws)
+            if setup_id not in self._tasks:
+                self._tasks[setup_id] = asyncio.create_task(self._poll_setup(setup_id))
+
+    async def unsubscribe(self, setup_id: str, ws: WebSocket) -> None:
+        async with self._lock:
+            subscribers = self._subscriptions.get(setup_id)
+            if subscribers and ws in subscribers:
+                subscribers.remove(ws)
+            if not subscribers:
+                self._subscriptions.pop(setup_id, None)
+                task = self._tasks.pop(setup_id, None)
+                if task:
+                    task.cancel()
+
+    async def remove_ws(self, ws: WebSocket) -> None:
+        async with self._lock:
+            for setup_id, subscribers in list(self._subscriptions.items()):
+                if ws in subscribers:
+                    subscribers.remove(ws)
+                if not subscribers:
+                    self._subscriptions.pop(setup_id, None)
+                    task = self._tasks.pop(setup_id, None)
+                    if task:
+                        task.cancel()
+
+    async def _poll_setup(self, setup_id: str) -> None:
+        while True:
+            setup = get_setup(setup_id)
+            if not setup:
+                await self._broadcast(setup_id, {"t": "error", "setupId": setup_id, "msg": "setup missing"})
+                await asyncio.sleep(2)
+                continue
+            node_id = setup.get("node_id")
+            interval = max(1, int(LIVE_POLL_INTERVAL_SEC))
+            reading = await fetch_reading(setup_id, node_id)
+            if reading:
+                reading_payload = {
+                    "t": "reading",
+                    "setupId": setup_id,
+                    "ts": reading["ts"],
+                    "ph": reading["ph"],
+                    "ec": reading["ec"],
+                    "temp": reading["temp"],
+                    "status": reading.get("status", ["ok"]),
+                }
+                await self._broadcast(setup_id, reading_payload)
+            await asyncio.sleep(interval)
+
+    async def _broadcast(self, setup_id: str, payload: dict[str, Any]) -> None:
+        subscribers = self._subscriptions.get(setup_id, set())
+        if not subscribers:
+            return
+        data = json.dumps(payload)
+        for ws in list(subscribers):
+            try:
+                await ws.send_text(data)
+            except Exception:
+                await self.unsubscribe(setup_id, ws)
+
+    async def broadcast_all(self, payload: dict[str, Any]) -> None:
+        data = json.dumps(payload)
+        for setup_id, subscribers in list(self._subscriptions.items()):
+            for ws in list(subscribers):
+                try:
+                    await ws.send_text(data)
+                except Exception:
+                    await self.unsubscribe(setup_id, ws)
+
+
+async def readings_capture_loop() -> None:
+    last_capture: dict[str, int] = {}
+    while True:
+        now_ms = int(time.time() * 1000)
+        for setup in list_setups():
+            setup_id = setup["setup_id"]
+            node_id = setup.get("node_id")
+            if not node_id:
+                continue
+            interval_sec = max(1, int(setup.get("value_interval_sec") or 2))
+            last_ts = last_capture.get(setup_id, 0)
+            if (now_ms - last_ts) < interval_sec * 1000:
+                continue
+            reading = await fetch_reading(setup_id, node_id)
+            if not reading:
+                continue
+            ts = int(reading.get("ts") or now_ms)
+            insert_reading(
+                setup_id=setup_id,
+                node_id=node_id,
+                ts=ts,
+                ph=reading.get("ph"),
+                ec=reading.get("ec"),
+                temp=reading.get("temp"),
+                status=reading.get("status"),
+            )
+            last_capture[setup_id] = ts
+        await asyncio.sleep(1)
