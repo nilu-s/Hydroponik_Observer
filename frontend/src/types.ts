@@ -9,9 +9,11 @@ export type Setup = {
 
 export type NodeInfo = {
   nodeId: string;
+  name?: string;
   kind: "real" | "dummy";
   status: "online" | "offline" | "unknown";
   fw?: string;
+  mode?: "real" | "debug";
 };
 
 export type CameraDevice = {

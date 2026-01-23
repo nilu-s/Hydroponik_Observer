@@ -51,7 +51,18 @@ const SetupCard = ({
       return "None";
     }
     const node = nodes.find((item) => item.nodeId === setup.nodeId);
-    return node ? `${node.nodeId} (${node.kind})` : setup.nodeId;
+    if (!node) {
+      return setup.nodeId;
+    }
+    const label = node.name ?? node.nodeId;
+    return label;
+  }, [nodes, setup.nodeId]);
+  const nodeMode = useMemo(() => {
+    if (!setup.nodeId) {
+      return "unknown";
+    }
+    const node = nodes.find((item) => item.nodeId === setup.nodeId);
+    return node?.mode ?? "unknown";
   }, [nodes, setup.nodeId]);
   const nodeStatus = useMemo(() => {
     if (!setup.nodeId) {
@@ -237,7 +248,7 @@ const SetupCard = ({
             <div
               className={`header-chip node${isNodeShared ? " is-shared" : ""}${
                 isNodeDisconnected ? " is-offline" : ""
-              }`}
+              }${nodeMode === "debug" ? " is-debug" : ""}`}
             >
               <span className="header-value">{nodeLabel}</span>
             </div>

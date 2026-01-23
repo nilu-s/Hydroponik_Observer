@@ -128,7 +128,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                   <option value="">Select node</option>
                   {nodes.map((node) => (
                     <option key={node.nodeId} value={node.nodeId}>
-                      {node.nodeId} ({node.kind})
+                      {node.name ?? node.nodeId}
                       {assignedNodes.has(node.nodeId) ? " • shared" : ""}
                     </option>
                   ))}

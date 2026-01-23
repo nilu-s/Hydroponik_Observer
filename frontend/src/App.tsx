@@ -16,6 +16,7 @@ import {
   requestNodeReading,
   setNodeMode,
   setNodeSim,
+  updateNodeName,
 } from "./api";
 import { CameraDevice, NodeInfo, Reading, Setup, WsServerMsg } from "./types";
 import { LiveWsClient } from "./ws";
@@ -165,6 +166,17 @@ const App = () => {
       const message = error instanceof Error ? error.message : "Delete failed";
       alert(message);
     }
+  };
+
+  const handleRenameNode = async (nodeId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("Name cannot be empty.");
+    }
+    const updated = await updateNodeName(nodeId, trimmed);
+    setNodes((prev) =>
+      prev.map((node) => (node.nodeId === nodeId ? updated : node))
+    );
   };
 
   const handleDeleteCamera = async (cameraId: string) => {
@@ -344,6 +356,7 @@ const App = () => {
         onSetNodeSim={handleSetNodeSim}
         onRequestNodeReading={handleRequestNodeReading}
         onResetNodeSim={handleResetNodeSim}
+        onRenameNode={handleRenameNode}
       />
 
       <div className="cards">

@@ -33,10 +33,13 @@ from .db import (
     list_readings,
     list_setups,
     update_setup,
+    upsert_node,
+    encode_cap_json,
+    update_node_name,
 )
 from .log_events import log_event
 from .config import PHOTOS_DIR
-from .models import NodeCommandRequest, SetupCreate, SetupUpdate
+from .models import NodeCommandRequest, NodeUpdate, SetupCreate, SetupUpdate
 from .nodes import ensure_dummy_node, get_dummy_reading, get_node_client
 from .readings import fetch_setup_reading
 from .stream import capture_photo_now
@@ -138,9 +141,11 @@ def get_nodes() -> list[dict]:
     return [
         {
             "nodeId": row["node_id"],
+            "name": row.get("name"),
             "kind": row["kind"],
             "fw": row["fw"],
             "capJson": row["cap_json"],
+            "mode": row.get("mode"),
             "lastSeenAt": row["last_seen_at"],
             "status": row["status"],
             "lastError": row["last_error"],
@@ -194,10 +199,21 @@ def post_node_command(node_id: str, payload: NodeCommandRequest) -> dict:
     if payload.t == "set_mode":
         if payload.mode not in ("real", "debug"):
             raise HTTPException(status_code=400, detail="invalid mode")
-        return client.send_command(
+        client.send_command(
             {"t": "set_mode", "mode": payload.mode},
             expect_response=False,
         )
+        upsert_node(
+            node_id=node_id,
+            name=None,
+            kind="real",
+            fw=client.hello.fw,
+            cap_json=encode_cap_json(client.hello.cap),
+            mode=payload.mode,
+            status="online",
+            last_error=None,
+        )
+        return {"ok": True}
     if payload.t == "set_sim":
         if payload.simPh is None and payload.simEc is None and payload.simTemp is None:
             raise HTTPException(status_code=400, detail="missing sim values")
@@ -279,6 +295,27 @@ def reset_db(token: str = Header("", alias="X-Reset-Token")) -> dict:
     init_db(reset=True)
     log_event("db.reset")
     return {"ok": True}
+
+
+@router.patch("/nodes/{node_id}")
+def patch_node(node_id: str, payload: NodeUpdate) -> dict:
+    if node_id == "DUMMY":
+        raise HTTPException(status_code=409, detail="cannot rename dummy node")
+    node = get_node(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="node not found")
+    updated = update_node_name(node_id, payload.name) or node
+    return {
+        "nodeId": updated["node_id"],
+        "name": updated.get("name"),
+        "kind": updated["kind"],
+        "fw": updated["fw"],
+        "capJson": updated["cap_json"],
+        "mode": updated.get("mode"),
+        "lastSeenAt": updated["last_seen_at"],
+        "status": updated["status"],
+        "lastError": updated["last_error"],
+    }
 
 
 @router.get("/setups/{setup_id}/history")

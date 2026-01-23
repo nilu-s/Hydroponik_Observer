@@ -13,7 +13,7 @@ from .config import DATA_DIR, ensure_dirs
 from .db import init_db, list_setups
 from .log_events import log_event
 from .live import LiveManager, readings_capture_loop
-from .nodes import ensure_dummy_node, node_discovery_loop
+from .nodes import ensure_dummy_node, node_discovery_loop, node_ping_loop
 from .stream import photo_capture_loop, snapshot_camera, stream_camera
 
 
@@ -40,6 +40,7 @@ async def on_startup() -> None:
     scan_cameras_once()
     refresh_camera_registry()
     app.state.node_task = asyncio.create_task(node_discovery_loop())
+    app.state.ping_task = asyncio.create_task(node_ping_loop())
     async def handle_camera_update(devices: list[dict]) -> None:
         await live_manager.broadcast_all({"t": "cameraDevices", "devices": devices})
 

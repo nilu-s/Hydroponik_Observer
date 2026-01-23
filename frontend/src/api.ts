@@ -54,6 +54,18 @@ export const deleteNode = async (nodeId: string): Promise<void> => {
   await handleResponse(res);
 };
 
+export const updateNodeName = async (
+  nodeId: string,
+  name: string
+): Promise<NodeInfo> => {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${nodeId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return handleResponse<NodeInfo>(res);
+};
+
 export const sendNodeCommand = async (
   nodeId: string,
   payload: Record<string, unknown>

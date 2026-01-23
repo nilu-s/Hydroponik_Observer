@@ -14,10 +14,23 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _ensure_nodes_columns() -> None:
+    with _get_conn() as conn:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(nodes)").fetchall()
+        }
+        if "mode" not in columns:
+            conn.execute("ALTER TABLE nodes ADD COLUMN mode TEXT")
+        if "name" not in columns:
+            conn.execute("ALTER TABLE nodes ADD COLUMN name TEXT")
+
+
 def init_db(reset: bool = False) -> None:
     ensure_dirs()
     if DB_PATH.exists():
         if not reset:
+            _ensure_nodes_columns()
             return
         DB_PATH.unlink(missing_ok=True)
     with _get_conn() as conn:
@@ -36,9 +49,11 @@ def init_db(reset: bool = False) -> None:
             );
             CREATE TABLE nodes (
                 node_id TEXT PRIMARY KEY,
+                name TEXT,
                 kind TEXT NOT NULL,
                 fw TEXT,
                 cap_json TEXT,
+                mode TEXT,
                 last_seen_at INTEGER,
                 status TEXT,
                 last_error TEXT
@@ -79,6 +94,7 @@ def init_db(reset: bool = False) -> None:
             );
             """
         )
+    _ensure_nodes_columns()
 
 
 @contextmanager
@@ -163,9 +179,11 @@ def delete_setup(setup_id: str) -> None:
 
 def upsert_node(
     node_id: str,
+    name: Optional[str],
     kind: str,
     fw: Optional[str],
     cap_json: Optional[str],
+    mode: Optional[str],
     status: str,
     last_error: Optional[str],
 ) -> None:
@@ -173,18 +191,39 @@ def upsert_node(
     with _get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO nodes (node_id, kind, fw, cap_json, last_seen_at, status, last_error)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO nodes (node_id, name, kind, fw, cap_json, mode, last_seen_at, status, last_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(node_id) DO UPDATE SET
+                name=COALESCE(excluded.name, nodes.name),
                 kind=excluded.kind,
                 fw=excluded.fw,
                 cap_json=excluded.cap_json,
+                mode=COALESCE(excluded.mode, nodes.mode),
                 last_seen_at=excluded.last_seen_at,
                 status=excluded.status,
                 last_error=excluded.last_error
             """,
-            (node_id, kind, fw, cap_json, last_seen_at, status, last_error),
+            (
+                node_id,
+                name,
+                kind,
+                fw,
+                cap_json,
+                mode,
+                last_seen_at,
+                status,
+                last_error,
+            ),
         )
+
+
+def update_node_name(node_id: str, name: Optional[str]) -> Optional[dict[str, Any]]:
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE nodes SET name = ? WHERE node_id = ?",
+            (name, node_id),
+        )
+    return get_node(node_id)
 
 
 def mark_nodes_offline(active_ids: set[str]) -> None:

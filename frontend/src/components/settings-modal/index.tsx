@@ -15,6 +15,7 @@ type Props = {
     nodeId: string,
     payload: { ph?: number; ec?: number; temp?: number }
   ) => Promise<void>;
+  onRenameNode: (nodeId: string, name: string) => Promise<void>;
   onRequestNodeReading: (nodeId: string) => Promise<Record<string, unknown>>;
   onResetNodeSim: (nodeId: string) => Promise<void>;
 };
@@ -29,6 +30,7 @@ const SettingsModal: FC<Props> = ({
   onExportAll,
   onSetNodeMode,
   onSetNodeSim,
+  onRenameNode,
   onRequestNodeReading,
   onResetNodeSim,
 }) => {
@@ -40,6 +42,7 @@ const SettingsModal: FC<Props> = ({
     Record<
       string,
       {
+        name: string;
         mode: "real" | "debug";
         simPh: string;
         simEc: string;
@@ -49,6 +52,7 @@ const SettingsModal: FC<Props> = ({
       }
     >
   >({});
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     setNodeState((prev) => {
@@ -56,12 +60,18 @@ const SettingsModal: FC<Props> = ({
       nodes.forEach((node) => {
         if (!next[node.nodeId]) {
           next[node.nodeId] = {
-            mode: "real",
+            name: node.name ?? node.nodeId,
+            mode: node.mode ?? "real",
             simPh: "",
             simEc: "",
             simTemp: "",
             status: "",
             isBusy: false,
+          };
+        } else if (node.name && next[node.nodeId].name === node.nodeId) {
+          next[node.nodeId] = {
+            ...next[node.nodeId],
+            name: node.name,
           };
         }
       });
@@ -167,6 +177,23 @@ const SettingsModal: FC<Props> = ({
     }
   };
 
+  const handleRename = async (nodeId: string) => {
+    const current = nodeState[nodeId];
+    if (!current) {
+      return;
+    }
+    updateNodeState(nodeId, { isBusy: true, status: "" });
+    try {
+      await onRenameNode(nodeId, current.name);
+      updateNodeState(nodeId, { status: "Name updated." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Rename failed";
+      updateNodeState(nodeId, { status: message });
+    } finally {
+      updateNodeState(nodeId, { isBusy: false });
+    }
+  };
+
   return (
     <div className="modal-overlay">
       <div className="wizard compact-modal">
@@ -186,24 +213,72 @@ const SettingsModal: FC<Props> = ({
             </button>
           </div>
           <div className="device-group">
-            <div className="device-group-title">Nodes</div>
-            <div className="device-grid">
-              {activeNodes.length === 0 && <div className="hint">No nodes found.</div>}
-              {activeNodes.map((node) => {
-                const state = nodeState[node.nodeId];
-                return (
-                  <div key={node.nodeId} className="tile device-tile">
-                    <div className="device-title">{node.nodeId}</div>
+            <div className="device-group-title">
+              {selectedNodeId ? "Node settings" : "Nodes"}
+            </div>
+            {selectedNodeId ? (
+              (() => {
+                const node = activeNodes.find((item) => item.nodeId === selectedNodeId);
+                const state = selectedNodeId ? nodeState[selectedNodeId] : undefined;
+                if (!node || !state) {
+                  return (
                     <div className="hint">
-                      {node.kind} · {node.status}
+                      Node not found.{" "}
+                      <button
+                        className="button small"
+                        onClick={() => setSelectedNodeId(null)}
+                      >
+                        Back
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="tile device-tile">
+                    <div className="row compact">
+                      <button
+                        className="button small"
+                        onClick={() => setSelectedNodeId(null)}
+                      >
+                        Back to nodes
+                      </button>
+                    </div>
+                    <div className="device-title">{node.name ?? node.nodeId}</div>
+                    <div className="hint">
+                      {node.kind} · {node.status} · mode: {node.mode ?? "unknown"}
                     </div>
                     <div className="section compact">
+                      <div className="row grid-two">
+                        <div className="field">
+                          <label className="label">Name</label>
+                          <input
+                            className="input compact"
+                            value={state?.name ?? node.name ?? node.nodeId}
+                            onChange={(event) =>
+                              updateNodeState(node.nodeId, { name: event.target.value })
+                            }
+                            placeholder={node.nodeId}
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="label">Name Action</label>
+                          <div className="row compact">
+                            <button
+                              className="button small"
+                              onClick={() => handleRename(node.nodeId)}
+                              disabled={state?.isBusy}
+                            >
+                              Save name
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                       <div className="row grid-two">
                         <div className="field">
                           <label className="label">Mode</label>
                           <select
                             className="select"
-                            value={state?.mode ?? "real"}
+                            value={state?.mode ?? node.mode ?? "real"}
                             onChange={(event) =>
                               updateNodeState(node.nodeId, {
                                 mode: event.target.value as "real" | "debug",
@@ -308,29 +383,48 @@ const SettingsModal: FC<Props> = ({
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              })()
+            ) : (
+              <div className="device-grid is-compact">
+                {activeNodes.length === 0 && <div className="hint">No nodes found.</div>}
+                {activeNodes.map((node) => (
+                  <button
+                    key={node.nodeId}
+                    type="button"
+                    className="tile device-tile is-compact"
+                    onClick={() => setSelectedNodeId(node.nodeId)}
+                  >
+                    <div className="device-title">{node.name ?? node.nodeId}</div>
+                    <div className="hint">
+                      {node.status} · {node.mode ?? "unknown"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="device-group">
-            <div className="device-group-title">Cameras</div>
-            <div className="device-grid">
-              {cameraDevices.length === 0 && <div className="hint">No cameras found.</div>}
-              {cameraDevices.map((camera) => (
-                <div key={camera.cameraId} className="tile device-tile">
-                  <div className="device-title">{camera.friendlyName || camera.cameraId}</div>
-                  <div className="hint">{camera.status ?? "offline"}</div>
-                  <div className="device-actions">
-                    <button
-                      className="button small danger"
-                      onClick={() => onDeleteCamera(camera.cameraId)}
-                    >
-                      Delete
-                    </button>
+          {!selectedNodeId && (
+            <div className="device-group">
+              <div className="device-group-title">Cameras</div>
+              <div className="device-grid">
+                {cameraDevices.length === 0 && <div className="hint">No cameras found.</div>}
+                {cameraDevices.map((camera) => (
+                  <div key={camera.cameraId} className="tile device-tile">
+                    <div className="device-title">{camera.friendlyName || camera.cameraId}</div>
+                    <div className="hint">{camera.status ?? "offline"}</div>
+                    <div className="device-actions">
+                      <button
+                        className="button small danger"
+                        onClick={() => onDeleteCamera(camera.cameraId)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -29,12 +29,18 @@ class Setup(BaseModel):
 
 class Node(BaseModel):
     nodeId: str
+    name: Optional[str] = None
     kind: str
     fw: Optional[str] = None
     capJson: Optional[str] = None
+    mode: Optional[str] = None
     lastSeenAt: Optional[int] = None
     status: Optional[str] = None
     lastError: Optional[str] = None
+
+
+class NodeUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
 class Camera(BaseModel):
