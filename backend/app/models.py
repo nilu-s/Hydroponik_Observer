@@ -54,10 +54,6 @@ class Camera(BaseModel):
     lastError: Optional[str] = None
 
 
-class CameraBindRequest(BaseModel):
-    deviceId: str = Field(min_length=3, max_length=2000)
-
-
 class Reading(BaseModel):
     ts: int
     ph: float

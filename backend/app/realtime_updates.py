@@ -7,16 +7,28 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, WebSocket
 
-from .config import LIVE_POLL_INTERVAL_SEC
+from .config import DEFAULT_VALUE_INTERVAL_SEC, LIVE_POLL_INTERVAL_SEC
 from .db import get_setup, insert_reading, list_setups
-from .readings import fetch_node_reading
+from .nodes import fetch_node_reading
 
 
-async def fetch_reading(setup_id: str, node_id: Optional[str]) -> Optional[dict[str, Any]]:
+async def _fetch_live_reading(setup_id: str, node_id: Optional[str]) -> Optional[dict[str, Any]]:
     try:
         return await fetch_node_reading(setup_id, node_id)
     except HTTPException:
         return None
+
+
+def _build_reading_payload(setup_id: str, reading: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "t": "reading",
+        "setupId": setup_id,
+        "ts": reading["ts"],
+        "ph": reading["ph"],
+        "ec": reading["ec"],
+        "temp": reading["temp"],
+        "status": reading.get("status", ["ok"]),
+    }
 
 
 class LiveManager:
@@ -61,20 +73,11 @@ class LiveManager:
                 await asyncio.sleep(2)
                 continue
             node_id = setup.get("node_id")
-            interval = max(1, int(LIVE_POLL_INTERVAL_SEC))
-            reading = await fetch_reading(setup_id, node_id)
+            poll_interval_sec = max(1, int(LIVE_POLL_INTERVAL_SEC))
+            reading = await _fetch_live_reading(setup_id, node_id)
             if reading:
-                reading_payload = {
-                    "t": "reading",
-                    "setupId": setup_id,
-                    "ts": reading["ts"],
-                    "ph": reading["ph"],
-                    "ec": reading["ec"],
-                    "temp": reading["temp"],
-                    "status": reading.get("status", ["ok"]),
-                }
-                await self._broadcast(setup_id, reading_payload)
-            await asyncio.sleep(interval)
+                await self._broadcast(setup_id, _build_reading_payload(setup_id, reading))
+            await asyncio.sleep(poll_interval_sec)
 
     async def _broadcast(self, setup_id: str, payload: dict[str, Any]) -> None:
         subscribers = self._subscriptions.get(setup_id, set())
@@ -98,7 +101,7 @@ class LiveManager:
 
 
 async def readings_capture_loop() -> None:
-    last_capture: dict[str, int] = {}
+    last_capture_by_setup: dict[str, int] = {}
     while True:
         now_ms = int(time.time() * 1000)
         for setup in list_setups():
@@ -106,11 +109,11 @@ async def readings_capture_loop() -> None:
             node_id = setup.get("node_id")
             if not node_id:
                 continue
-            interval_sec = max(1, int(setup.get("value_interval_sec") or 2))
-            last_ts = last_capture.get(setup_id, 0)
-            if (now_ms - last_ts) < interval_sec * 1000:
+            interval_sec = max(1, int(setup.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_SEC))
+            last_capture_ts = last_capture_by_setup.get(setup_id, 0)
+            if (now_ms - last_capture_ts) < interval_sec * 1000:
                 continue
-            reading = await fetch_reading(setup_id, node_id)
+            reading = await _fetch_live_reading(setup_id, node_id)
             if not reading:
                 continue
             ts = int(reading.get("ts") or now_ms)
@@ -123,5 +126,5 @@ async def readings_capture_loop() -> None:
                 temp=reading.get("temp"),
                 status=reading.get("status"),
             )
-            last_capture[setup_id] = ts
+            last_capture_by_setup[setup_id] = ts
         await asyncio.sleep(1)

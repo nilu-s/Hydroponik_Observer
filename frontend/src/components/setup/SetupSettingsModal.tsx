@@ -1,0 +1,141 @@
+import { FC, ReactNode } from "react";
+
+import { CameraDevice, NodeInfo } from "../../types";
+
+type Props = {
+  isOpen: boolean;
+  setupName: string;
+  isSavingName: boolean;
+  nodeId: string | null;
+  cameraId: string | null;
+  nodes: NodeInfo[];
+  cameraOptions: CameraDevice[];
+  sharedNodeIds: Set<string>;
+  sharedCameraIds: Set<string>;
+  onClose: () => void;
+  onNameChange: (value: string) => void;
+  onSaveName: () => void;
+  onNodeChange: (nodeId: string | null) => void;
+  onCameraChange: (cameraId: string | null) => void;
+  onDeleteSetup: () => void;
+  children: ReactNode;
+};
+
+const SetupSettingsModal: FC<Props> = ({
+  isOpen,
+  setupName,
+  isSavingName,
+  nodeId,
+  cameraId,
+  nodes,
+  cameraOptions,
+  sharedNodeIds,
+  sharedCameraIds,
+  onClose,
+  onNameChange,
+  onSaveName,
+  onNodeChange,
+  onCameraChange,
+  onDeleteSetup,
+  children,
+}) => {
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="wizard compact-modal">
+        <div className="wizard-header">
+          <div className="wizard-header-title">
+            <div className="wizard-title">Setup settings</div>
+            <div className="wizard-subtitle">Name and frequencies</div>
+          </div>
+          <button
+            className="icon-button wizard-header-close"
+            onClick={onClose}
+            aria-label="Close settings"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="wizard-content setup-settings-content">
+          <div className="setup-settings-compact">
+            <div className="setup-row">
+              <label className="label">Name</label>
+              <input
+                className="input compact"
+                value={setupName}
+                onChange={(event) => onNameChange(event.target.value)}
+              />
+              <button
+                className="button small"
+                onClick={onSaveName}
+                disabled={isSavingName}
+              >
+                Save
+              </button>
+            </div>
+            <div className="setup-row">
+              <label className="label">Node</label>
+              <select
+                className={`select${sharedNodeIds.has(nodeId ?? "") ? " select-shared" : ""}`}
+                value={nodeId ?? ""}
+                onChange={(event) => onNodeChange(event.target.value || null)}
+              >
+                <option value="">None</option>
+                {nodes.map((node) => (
+                  <option
+                    key={node.nodeId}
+                    value={node.nodeId}
+                    className={sharedNodeIds.has(node.nodeId) ? "option-shared" : ""}
+                  >
+                    {node.nodeId} ({node.kind})
+                    {sharedNodeIds.has(node.nodeId) ? " • shared" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="setup-row">
+              <label className="label">Camera</label>
+              <select
+                className={`select${
+                  sharedCameraIds.has(cameraId ?? "") ? " select-shared" : ""
+                }`}
+                value={cameraId ?? ""}
+                onChange={(event) => onCameraChange(event.target.value || null)}
+              >
+                <option value="">None</option>
+                {cameraOptions.map((camera) => (
+                  <option
+                    key={camera.cameraId}
+                    value={camera.cameraId}
+                    className={sharedCameraIds.has(camera.cameraId) ? "option-shared" : ""}
+                  >
+                    {(camera.friendlyName || camera.cameraId) +
+                      (camera.status === "offline" ? " • offline" : "") +
+                      (sharedCameraIds.has(camera.cameraId) ? " • shared" : "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="setup-row setup-row-stack">
+              <div className="section-title">Frequencies</div>
+              {children}
+            </div>
+          </div>
+        </div>
+        <div className="setup-settings-actions">
+          <button className="button" onClick={onClose}>
+            Close
+          </button>
+          <button className="button danger" onClick={onDeleteSetup}>
+            Delete setup
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SetupSettingsModal;

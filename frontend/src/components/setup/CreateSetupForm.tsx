@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { CameraDevice, NodeInfo, Setup } from "../types";
+import { CameraDevice, NodeInfo, Setup } from "../../types";
 
 type CreatePayload = {
   name: string;
@@ -173,9 +173,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                       max={1440}
                       step={1}
                       value={valueIntervalMinutes}
-                      onChange={(event) =>
-                        setValueIntervalMinutes(Number(event.target.value))
-                      }
+                      onChange={(event) => setValueIntervalMinutes(Number(event.target.value))}
                     />
                     <div className="hint">Minutes</div>
                   </div>
@@ -188,9 +186,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                       max={1440}
                       step={1}
                       value={photoIntervalMinutes}
-                      onChange={(event) =>
-                        setPhotoIntervalMinutes(Number(event.target.value))
-                      }
+                      onChange={(event) => setPhotoIntervalMinutes(Number(event.target.value))}
                     />
                     <div className="hint">Minutes</div>
                   </div>

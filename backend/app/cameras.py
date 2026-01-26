@@ -6,9 +6,8 @@ import threading
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
-from .config import CAMERA_SCAN_INTERVAL_SEC
+from .config import CAMERA_SCAN_INTERVAL_SEC, log_event
 from .db import list_cameras, mark_cameras_offline, upsert_camera
-from .log_events import log_event
 from .worker_client import list_worker_devices
 
 
@@ -29,13 +28,13 @@ def _camera_id_from_device_id(device_id: str) -> str:
     return f"CAM_{digest}"
 
 
-def get_camera_binding(camera_id: str) -> Optional[CameraBinding]:
+def _get_camera_binding(camera_id: str) -> Optional[CameraBinding]:
     with CAMERA_REGISTRY_LOCK:
         return CAMERA_REGISTRY.get(camera_id)
 
 
 def get_camera_device_id(camera_id: str) -> Optional[str]:
-    binding = get_camera_binding(camera_id)
+    binding = _get_camera_binding(camera_id)
     return binding.device_id if binding else None
 
 
@@ -57,7 +56,6 @@ def _scan_cameras_once() -> set[str]:
         devices = list_worker_devices()
     except Exception as exc:
         log_event("camera.discovery_failed", error=str(exc))
-        mark_cameras_offline(active_ids)
         refresh_camera_registry()
         return active_ids
 

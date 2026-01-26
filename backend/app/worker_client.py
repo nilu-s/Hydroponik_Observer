@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .config import WORKER_PATH
-from .log_events import log_event
+from .config import WORKER_PATH, log_event
 
 
 HEADER_STRUCT = struct.Struct("<4sHHQQHHI")
@@ -154,10 +153,6 @@ class WorkerManager:
                 await worker.start()
             self._refs[device_id] = self._refs.get(device_id, 0) + 1
             return worker
-
-    async def get_worker(self, device_id: str) -> Optional[CameraWorker]:
-        async with self._lock:
-            return self._workers.get(device_id)
 
     async def release(self, device_id: str) -> None:
         async with self._lock:

@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from fastapi import HTTPException
 from starlette.responses import Response, StreamingResponse
 
 from .cameras import get_camera_device_id, refresh_camera_registry, scan_cameras_once
-from .config import LIVE_MAX_FPS, LIVE_MIN_FPS, PHOTOS_DIR
-STREAM_ERROR_COOLDOWN_SEC = 2.0
-
+from .config import LIVE_MAX_FPS, LIVE_MIN_FPS, PHOTOS_DIR, log_event
 from .db import get_camera, get_setup, insert_photo, list_cameras, list_setups, update_setup
-from .log_events import log_event
 from .worker_client import FramePacket, WorkerManager
+
+STREAM_ERROR_COOLDOWN_SEC = 2.0
 
 
 def _safe_folder_name(name: str) -> str:
@@ -258,7 +257,7 @@ async def stream_camera(setup_id: str) -> StreamingResponse:
     resolved_id, device_id = _resolve_setup_camera(setup_id, camera_id, scan=True)
     state = await CAMERA_STREAMS.acquire(resolved_id, device_id)
     if state.last_error and (time.time() - state.last_error_ts) < STREAM_ERROR_COOLDOWN_SEC:
-        await CAMERA_STREAMS.release(camera_id)
+        await CAMERA_STREAMS.release(resolved_id)
         raise HTTPException(status_code=503, detail="camera cooling down")
     generator = _frame_generator(state)
     return StreamingResponse(generator, media_type="multipart/x-mixed-replace; boundary=frame")
@@ -274,7 +273,7 @@ async def snapshot_camera(setup_id: str) -> Response:
     resolved_id, device_id = _resolve_setup_camera(setup_id, camera_id, scan=True)
     state = await CAMERA_STREAMS.acquire(resolved_id, device_id)
     if state.last_error and (time.time() - state.last_error_ts) < STREAM_ERROR_COOLDOWN_SEC:
-        await CAMERA_STREAMS.release(camera_id)
+        await CAMERA_STREAMS.release(resolved_id)
         raise HTTPException(status_code=503, detail="camera cooling down")
     try:
         if state.last_jpeg and (time.time() - state.last_ts) < 2.0:
@@ -299,7 +298,7 @@ async def capture_photo_now(setup_id: str) -> dict:
 
 
 async def photo_capture_loop() -> None:
-    last_capture: dict[str, int] = {}
+    last_capture_by_setup: dict[str, int] = {}
     last_log_ts = 0
     while True:
         now_ms = int(time.time() * 1000)
@@ -315,14 +314,14 @@ async def photo_capture_loop() -> None:
                 continue
             interval_sec = int(setup.get("photo_interval_sec") or 1800)
             interval_sec = max(60, min(86400, interval_sec))
-            last_ts = last_capture.get(setup_id, 0)
-            if (now_ms - last_ts) < interval_sec * 1000:
+            last_capture_ts = last_capture_by_setup.get(setup_id, 0)
+            if (now_ms - last_capture_ts) < interval_sec * 1000:
                 continue
             try:
                 camera_id, device_id = _resolve_setup_camera(setup_id, camera_id, scan=True)
                 setup_name = setup.get("name") or setup_id
                 await _capture_and_store_photo(setup_id, setup_name, camera_id, device_id)
-                last_capture[setup_id] = now_ms
+                last_capture_by_setup[setup_id] = now_ms
             except HTTPException:
                 continue
         await asyncio.sleep(5)

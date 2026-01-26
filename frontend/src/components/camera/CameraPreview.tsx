@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getBackendBaseUrl } from "../backend-url";
+import { getBackendBaseUrl } from "../../services/backend-url";
 
 type Props = {
   setupId: string;

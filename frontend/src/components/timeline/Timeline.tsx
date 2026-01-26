@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getHistory } from "../api";
-import { getBackendBaseUrl } from "../backend-url";
-import { Setup, StoredPhoto, StoredReading } from "../types";
+import { getHistory } from "../../services/api";
+import { getBackendBaseUrl } from "../../services/backend-url";
+import { Setup, StoredPhoto, StoredReading } from "../../types";
 
 type TimelineEvent =
   | { type: "reading"; ts: number; reading: StoredReading }
@@ -104,19 +104,21 @@ const Timeline = ({ setup }: Props) => {
   }, [selected?.ts]);
 
   const readings = useMemo(
-    () => events.filter((event) => event.type === "reading") as {
-      type: "reading";
-      ts: number;
-      reading: StoredReading;
-    }[],
+    () =>
+      events.filter((event) => event.type === "reading") as {
+        type: "reading";
+        ts: number;
+        reading: StoredReading;
+      }[],
     [events]
   );
   const photos = useMemo(
-    () => events.filter((event) => event.type === "photo") as {
-      type: "photo";
-      ts: number;
-      photo: StoredPhoto;
-    }[],
+    () =>
+      events.filter((event) => event.type === "photo") as {
+        type: "photo";
+        ts: number;
+        photo: StoredPhoto;
+      }[],
     [events]
   );
 
@@ -139,9 +141,7 @@ const Timeline = ({ setup }: Props) => {
   };
 
   const selectedReading = useMemo(() => {
-    return pair.readingTs
-      ? readings.find((event) => event.ts === pair.readingTs)?.reading ?? null
-      : null;
+    return pair.readingTs ? readings.find((event) => event.ts === pair.readingTs)?.reading ?? null : null;
   }, [pair.readingTs, readings]);
 
   const readingChart = useMemo(() => {
@@ -230,8 +230,7 @@ const Timeline = ({ setup }: Props) => {
 
   const minTs = events[0]?.ts;
   const maxTs = events[events.length - 1]?.ts;
-  const formatDate = (ts?: number) =>
-    ts ? new Date(ts).toLocaleString() : "--";
+  const formatDate = (ts?: number) => (ts ? new Date(ts).toLocaleString() : "--");
 
   const photoUrl = (path?: string) => {
     if (!path) return "";
@@ -291,8 +290,7 @@ const Timeline = ({ setup }: Props) => {
     return { left: `${percent}%`, transform: "translateX(-50%)" };
   }, [sliderTs, minTs, maxTs]);
 
-  const formatStat = (value: number, hasValues: boolean) =>
-    hasValues ? value.toFixed(2) : "--";
+  const formatStat = (value: number, hasValues: boolean) => (hasValues ? value.toFixed(2) : "--");
 
   return (
     <div className="section">
@@ -419,9 +417,7 @@ const Timeline = ({ setup }: Props) => {
       </div>
 
       <div className="timeline-scroll">
-        {events.length === 0 && (
-          <div className="hint">No stored readings or photos yet.</div>
-        )}
+        {events.length === 0 && <div className="hint">No stored readings or photos yet.</div>}
         {events.length > 0 && (
           <div className="timeline-axis-wrap">
             <div className="timeline-axis-line" />
@@ -429,39 +425,32 @@ const Timeline = ({ setup }: Props) => {
               <div className="timeline-row-label">Values</div>
               <div className="timeline-track timeline-track-values">
                 {readings.map((event) => (
-                    <button
-                      key={`reading-${event.ts}`}
-                      className={`timeline-dot reading ${
-                        pair.readingTs === event.ts ? "active" : ""
-                      }`}
-                      style={{ left: `${toPercent(event.ts)}%` }}
-                      onClick={() => handleSelect(event)}
-                      title={new Date(event.ts).toLocaleString()}
-                    />
-                  ))}
+                  <button
+                    key={`reading-${event.ts}`}
+                    className={`timeline-dot reading ${pair.readingTs === event.ts ? "active" : ""}`}
+                    style={{ left: `${toPercent(event.ts)}%` }}
+                    onClick={() => handleSelect(event)}
+                    title={new Date(event.ts).toLocaleString()}
+                  />
+                ))}
               </div>
             </div>
             <div className="timeline-row">
               <div className="timeline-row-label">Photos</div>
               <div className="timeline-track timeline-track-photos">
                 {photos.map((event) => (
-                    <button
-                      key={`photo-${event.ts}`}
-                      className={`timeline-dot photo ${
-                        pair.photoTs === event.ts ? "active" : ""
-                      }`}
-                      style={{ left: `${toPercent(event.ts)}%` }}
-                      onClick={() => handleSelect(event)}
-                      title={new Date(event.ts).toLocaleString()}
-                    />
-                  ))}
+                  <button
+                    key={`photo-${event.ts}`}
+                    className={`timeline-dot photo ${pair.photoTs === event.ts ? "active" : ""}`}
+                    style={{ left: `${toPercent(event.ts)}%` }}
+                    onClick={() => handleSelect(event)}
+                    title={new Date(event.ts).toLocaleString()}
+                  />
+                ))}
               </div>
             </div>
             <div className="timeline-slider-wrap">
-              <div
-                className="timeline-slider-label floating"
-                style={sliderLabelStyle}
-              >
+              <div className="timeline-slider-label floating" style={sliderLabelStyle}>
                 {formatDate(sliderTs ?? minTs)}
               </div>
               <input

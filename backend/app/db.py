@@ -460,25 +460,3 @@ def get_calibration(node_id: str) -> Optional[dict[str, Any]]:
             (node_id,),
         ).fetchone()
     return dict(row) if row else None
-
-
-def upsert_calibration(
-    node_id: str,
-    calib_version: int,
-    calib_hash: str,
-    payload_json: str,
-) -> None:
-    updated_at = _now_ms()
-    with _get_conn() as conn:
-        conn.execute(
-            """
-            INSERT INTO calibration (node_id, calib_version, calib_hash, payload_json, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(node_id) DO UPDATE SET
-                calib_version=excluded.calib_version,
-                calib_hash=excluded.calib_hash,
-                payload_json=excluded.payload_json,
-                updated_at=excluded.updated_at
-            """,
-            (node_id, calib_version, calib_hash, payload_json, updated_at),
-        )

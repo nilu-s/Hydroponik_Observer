@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { CameraDevice, NodeInfo, Reading, Setup } from "../types";
+import { CameraDevice, NodeInfo, Reading, Setup } from "../../types";
+import CameraPreview from "../camera/CameraPreview";
+import SettingsButton from "../common/SettingsButton";
+import Timeline from "../timeline/Timeline";
 import FrequencyControls from "./FrequencyControls";
-import LiveValues from "./LiveValues";
-import CameraPreview from "./CameraPreview";
-import Timeline from "./Timeline";
-import SettingsButton from "./settings-button";
-import SetupSettingsModal from "./setup-settings-modal";
+import SetupSettingsModal from "./SetupSettingsModal";
 
 type Props = {
   setup: Setup;
@@ -122,14 +121,12 @@ const SetupCard = ({
     }
   };
 
-  const isNodeShared = !!setup.nodeId &&
-    setups.some(
-      (item) => item.setupId !== setup.setupId && item.nodeId === setup.nodeId
-    );
-  const isCameraShared = !!setup.cameraId &&
-    setups.some(
-      (item) => item.setupId !== setup.setupId && item.cameraId === setup.cameraId
-    );
+  const isNodeShared =
+    !!setup.nodeId &&
+    setups.some((item) => item.setupId !== setup.setupId && item.nodeId === setup.nodeId);
+  const isCameraShared =
+    !!setup.cameraId &&
+    setups.some((item) => item.setupId !== setup.setupId && item.cameraId === setup.cameraId);
   const sharedNodeIds = useMemo(() => {
     const map = new Map<string, number>();
     setups.forEach((item) => {
@@ -137,7 +134,11 @@ const SetupCard = ({
         map.set(item.nodeId, (map.get(item.nodeId) ?? 0) + 1);
       }
     });
-    return new Set(Array.from(map.entries()).filter(([, count]) => count > 1).map(([id]) => id));
+    return new Set(
+      Array.from(map.entries())
+        .filter(([, count]) => count > 1)
+        .map(([id]) => id)
+    );
   }, [setups]);
 
   const sharedCameraIds = useMemo(() => {
@@ -148,22 +149,26 @@ const SetupCard = ({
       }
     });
     return new Set(
-      Array.from(map.entries()).filter(([, count]) => count > 1).map(([id]) => id)
+      Array.from(map.entries())
+        .filter(([, count]) => count > 1)
+        .map(([id]) => id)
     );
   }, [setups]);
-  const isCameraKnown = !!setup.cameraId &&
+  const isCameraKnown =
+    !!setup.cameraId &&
     cameraDevices.some((camera) => camera.cameraId === setup.cameraId);
-  const cameraOptions = setup.cameraId && !isCameraKnown
-    ? [
-        {
-          cameraId: setup.cameraId,
-          deviceId: "",
-          friendlyName: `Unbekannt (${setup.cameraId})`,
-          status: "offline" as const,
-        },
-        ...cameraDevices,
-      ]
-    : cameraDevices;
+  const cameraOptions =
+    setup.cameraId && !isCameraKnown
+      ? [
+          {
+            cameraId: setup.cameraId,
+            deviceId: "",
+            friendlyName: `Unbekannt (${setup.cameraId})`,
+            status: "offline" as const,
+          },
+          ...cameraDevices,
+        ]
+      : cameraDevices;
 
   const cameraLabel = useMemo(() => {
     if (!setup.cameraId) {
@@ -210,8 +215,7 @@ const SetupCard = ({
             cameraId={setup.cameraId}
             cameraStatus={
               setup.cameraId
-                ? cameraDevices.find((camera) => camera.cameraId === setup.cameraId)
-                    ?.status
+                ? cameraDevices.find((camera) => camera.cameraId === setup.cameraId)?.status
                 : undefined
             }
             compact

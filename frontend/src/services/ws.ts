@@ -1,5 +1,5 @@
 import { getBackendWsBaseUrl } from "./backend-url";
-import { WsClientMsg, WsServerMsg } from "./types";
+import { WsClientMsg, WsServerMsg } from "../types";
 
 type Status = "connected" | "disconnected" | "connecting";
 type MsgHandler = (msg: WsServerMsg) => void;

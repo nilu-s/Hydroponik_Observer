@@ -1,5 +1,5 @@
 import { getBackendBaseUrl } from "./backend-url";
-import { CameraDevice, NodeInfo, Reading, Setup } from "./types";
+import { CameraDevice, NodeInfo, Reading, Setup } from "../types";
 
 const handleResponse = async <T,>(res: Response): Promise<T> => {
   if (!res.ok) {
