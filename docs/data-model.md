@@ -1,162 +1,116 @@
-# Datenmodell und Persistenz
+# Datenmodell
 
-Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
-
-## ER Diagramm
+Das Datenmodell basiert auf SQLite und wird beim Backend-Start initialisiert. Das ER-Diagramm gibt einen Überblick über die Entitäten und ihre konzeptionellen Beziehungen.
 
 ```mermaid
 erDiagram
-  setups ||--o{ readings : has
-  nodes ||--o{ readings : produces
-  setups ||--o{ cameras : uses
-  nodes ||--|| calibration : has
+    SETUPS {
+        TEXT setup_id PK
+        TEXT name
+        TEXT node_id
+        TEXT camera_id
+        INTEGER value_interval_minutes
+        INTEGER photo_interval_minutes
+        INTEGER created_at
+    }
+    NODES {
+        TEXT node_id PK
+        TEXT name
+        TEXT kind
+        TEXT fw
+        TEXT cap_json
+        TEXT mode
+        INTEGER last_seen_at
+        TEXT status
+        TEXT last_error
+        TEXT status_json
+    }
+    CALIBRATION {
+        TEXT node_id PK
+        INTEGER calib_version
+        TEXT calib_hash
+        TEXT payload_json
+        INTEGER updated_at
+    }
+    READINGS {
+        INTEGER id PK
+        TEXT setup_id
+        TEXT node_id
+        INTEGER ts
+        REAL ph
+        REAL ec
+        REAL temp
+        TEXT status_json
+    }
+    CAMERAS {
+        TEXT camera_id PK
+        TEXT port
+        TEXT alias
+        TEXT friendly_name
+        TEXT pnp_device_id
+        TEXT container_id
+        TEXT status
+        INTEGER last_seen_at
+        INTEGER created_at
+        INTEGER updated_at
+    }
 
-  setups {
-    string setup_id
-    string name
-    string node_id
-    string camera_id
-    int value_interval_minutes
-    int photo_interval_minutes
-    int created_at
-  }
-
-  nodes {
-    string node_id
-    string name
-    string kind
-    string fw
-    string cap_json
-    string mode
-    int last_seen_at
-    string status
-    string last_error
-    string status_json
-  }
-
-  readings {
-    int id
-    string setup_id
-    string node_id
-    int ts
-    float ph
-    float ec
-    float temp
-    string status_json
-  }
-
-  cameras {
-    string camera_id
-    string port
-    string alias
-    string friendly_name
-    string pnp_device_id
-    string container_id
-    string status
-    int last_seen_at
-    int created_at
-    int updated_at
-  }
-
-  calibration {
-    string node_id
-    int calib_version
-    string calib_hash
-    string payload_json
-    int updated_at
-  }
+    SETUPS ||--o{ READINGS : has
+    NODES ||--o{ READINGS : produces
+    NODES ||--|| CALIBRATION : has
+    CAMERAS ||--o{ SETUPS : assigned
 ```
 
-## Tabellen
+## Tabellenbeschreibung
 
-### setups
+### `setups`
+- Repräsentiert ein logisches Setup (ein Node + optional eine Kamera).
+- `value_interval_minutes` und `photo_interval_minutes` steuern die Capture-Intervalle.
+- `camera_id` referenziert eine Kamera aus der Liste der erkannten Geräte.
 
-- `setup_id` (PK)
-- `name`
-- `node_id` (nullable)
-- `camera_id` (nullable)
-- `value_interval_minutes` (Intervall in Minuten)
-- `photo_interval_minutes` (Intervall in Minuten)
-- `created_at`
+### `nodes`
+- Eintrag pro erkannter SensorNode (UID-basiert).
+- `cap_json` enthält die Capabilities als JSON-String.
+- `last_seen_at`, `status` und `status_json` bilden die Online/Offline-Sicht ab.
 
-### nodes
+### `readings`
+- Zeitstempel-basierte Messwerte pro Setup und Node.
+- `status_json` enthält den Status des Readings (z. B. `["ok"]`).
 
-- `node_id` (PK, RP2040 UID)
-- `name` (Alias)
-- `kind` (real)
-- `fw` (SensorNode Firmware Version)
-- `cap_json` (Capabilities JSON)
-- `mode` (real/debug)
-- `last_seen_at`
-- `status` (online/offline)
-- `last_error`
-- `status_json` (Metadaten, z.B. letzter `port`)
+### `cameras`
+- Abbildung der per Worker gefundenen Kamerageräte.
+- `port`, `pnp_device_id`, `container_id` dienen der Zuordnung und Stabilität.
 
-### calibration
+### `calibration`
+- Versionierte Kalibrierung pro Node.
+- `payload_json` enthält die Kalibrierpunkte (pH/EC).
 
-- `node_id` (PK)
-- `calib_version`
-- `calib_hash`
-- `payload_json`
-- `updated_at`
+## Mapping Backend ↔ Frontend Felder
+Die API liefert Felder in camelCase, während die DB snake_case verwendet.
 
-### readings
+### Setup
+- `setup_id` ↔ `setupId`
+- `node_id` ↔ `nodeId`
+- `camera_id` ↔ `cameraPort` (Frontend-Sicht auf die Kamera-Referenz)
+- `value_interval_minutes` ↔ `valueIntervalMinutes`
+- `photo_interval_minutes` ↔ `photoIntervalMinutes`
+- `created_at` ↔ `createdAt`
 
-- `id` (PK)
-- `setup_id`
-- `node_id`
-- `ts` (Epoch ms)
-- `ph`, `ec`, `temp` (nullable)
-- `status_json` (JSON-String eines Array)
+### Node
+- `node_id` ↔ `nodeId`
+- `name` ↔ `alias` (Frontend nutzt `alias`, Backend speichert `name`)
+- `cap_json` ↔ keine direkte Frontend-Entsprechung (primär Backend-intern)
+- `last_seen_at` ↔ `lastSeenAt`
+- `last_error` ↔ `lastError`
 
-### cameras
+### Reading
+- `setup_id` ↔ `setupId`
+- `node_id` ↔ `nodeId`
+- `status_json` ↔ `status` (Frontend als Array, Backend intern als JSON)
 
-- `camera_id` (PK, z.B. usb#### oder internal:hash)
-- `port` (USB Port oder leerer String)
-- `alias`
-- `friendly_name`
-- `pnp_device_id`
-- `container_id`
-- `status` (online/offline)
-- `last_seen_at`
-- `created_at`
-- `updated_at`
-
-## Dateien
-
-- `data/photos/<setup_id>/<setup_id>_<yyyy-mm-dd_HH-MM-SS>.jpg`
-- SensorHub Backend mountet `data/` unter `/data`, z.B. `/data/photos/...`
-
-## Mapping zu SensorHub Frontend Types
-
-### Setup (SensorHub Frontend)
-
-- `setupId` -> `setups.setup_id`
-- `nodeId` -> `setups.node_id`
-- `cameraPort` -> `setups.camera_id`
-- `valueIntervalMinutes` -> `setups.value_interval_minutes` (Minutenwert)
-- `photoIntervalMinutes` -> `setups.photo_interval_minutes` (Minutenwert)
-- `createdAt` -> `setups.created_at` (API-Feld, Frontend-Typ aktuell ohne Feld)
-
-### NodeInfo (SensorHub Frontend)
-
-- `nodeId` -> `nodes.node_id`
-- `port` -> `nodes.status_json` (Metadatum)
-- `alias` -> `nodes.name`
-- `kind` -> `nodes.kind`
-- `fw` -> `nodes.fw`
-- `mode` -> `nodes.mode`
-- `status` -> `nodes.status`
-- `capJson` -> `nodes.cap_json`
-- `lastSeenAt` -> `nodes.last_seen_at`
-- `lastError` -> `nodes.last_error`
-
-### CameraDevice (SensorHub Frontend)
-
-- `cameraId` -> `cameras.camera_id`
-- `deviceId` -> `cameras.camera_id`
-- `alias` -> `cameras.alias`
-- `pnpDeviceId` -> `cameras.pnp_device_id`
-- `friendlyName` -> `cameras.friendly_name`
-- `containerId` -> `cameras.container_id`
-- `status` -> `cameras.status`
+### Camera
+- `camera_id` ↔ `cameraId`
+- `port` ↔ `deviceId`
+- `friendly_name` ↔ `friendlyName`
+- `pnp_device_id` ↔ `pnpDeviceId`
+- `container_id` ↔ `containerId`

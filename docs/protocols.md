@@ -1,177 +1,143 @@
 # Protokolle
 
-Diese Datei beschreibt die genutzten Protokolle zwischen SensorNode, SensorHub Backend,
-SensorHub Frontend und Camera Worker.
+## Serial JSON Line Protocol
+Die Kommunikation zwischen Backend und SensorNode erfolgt über UART mit JSON-Nachrichten, die jeweils durch `\n` abgeschlossen sind. Das erleichtert robustes Parsen und erlaubt einfache Debug-Ausgaben.
 
-## 1) Serial JSON Line Protocol (SensorNode <-> SensorHub Backend)
-
-Transport: UART/USB Serial, 115200 Baud. Jede Nachricht ist eine JSON-Zeile
-(`\n`-terminiert).
-
-Geplant: Nachrichten sollen zukuenftig signiert (z.B. HMAC) werden, um
-Manipulationen im Serial-Transport zu erkennen. TLS ist fuer serielle
-Links nicht direkt moeglich, aber Signaturen/Sequenzen sind vorgesehen.
-
-### Ablauf (Live Reading)
-
-```mermaid
-flowchart TB
-  subgraph Top[" "]
-    direction LR
-    UI[SensorHub Frontend]
-    WS[SensorHub Backend WS]
-    Backend[SensorHub Backend]
-  end
-
-  subgraph Bottom[" "]
-    direction LR
-    Serial[Serial NodeClient]
-    Node[SensorNode RP2040]
-  end
-
-  UI -->|t=sub, setupId=S123| WS
-  WS -->|subscribe setupId| Backend
-  Backend -->|get_all| Serial
-  Serial -->|t=get_all| Node
-  Node -->|t=all| Serial
-  Serial -->|reading| Backend
-  Backend -->|t=reading| WS
-  WS -->|reading payload| UI
-
-  style UI fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
-  style WS fill:#FFF8E1,stroke:#F9A825,color:#8D6E63
-  style Backend fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-  style Serial fill:#E0F2F1,stroke:#00897B,color:#004D40
-  style Node fill:#F3E5F5,stroke:#8E24AA,color:#4A148C
-```
-
-### Handshake
-
-Identifikation erfolgt ueber die unveraenderliche RP2040-UID (`uid` Feld).
-
-**SensorNode -> SensorHub Backend**
-```json
-{"t":"hello","fw":"pico-0.1.0","uid":"e6616403e72f9a01","cap":{"ph":true,"ec":true,"temp":true,"debug":true,"calib":true,"pins":{"ph":"adc2","ec":"adc0","temp":"gpio17"}},"calibHash":"default"}
-```
-
-**SensorHub Backend -> SensorNode**
-```json
-{"t":"hello_ack","fw":"pico-0.1.0","uid":"e6616403e72f9a01","cap":{...},"calibHash":"default"}
-```
-
-### Messwerte
-
-**SensorHub Backend -> SensorNode**
+Beispiel (JSON pro Zeile):
 ```json
 {"t":"get_all"}
+{"t":"all","ts":1700000000000,"ph":6.8,"ec":1.4,"temp":22.1,"status":["ok"]}
 ```
 
-**SensorNode -> SensorHub Backend**
-```json
-{"t":"all","ts":123456,"mode":"real","status":["ok"],"ph":6.5,"ec":1.7,"temp":22.1}
-```
+Wichtige Nachrichtentypen:
+- `hello` / `hello_ack`: Handshake und Capabilities
+- `get_all` / `all`: Abfrage der aktuellen Messwerte
+- `set_mode`: Umschalten zwischen `real` und `debug`
+- `set_sim`: Setzen von Simulationswerten
+- `set_calib` / `set_calib_ack`: Kalibrierungsdaten übertragen
 
-### Node Modus
-
-**SensorHub Backend -> SensorNode**
-```json
-{"t":"set_mode","mode":"debug"}
-```
-
-### Debug Simulation
-
-**SensorHub Backend -> SensorNode**
-```json
-{"t":"set_sim","ph":6.4,"ec":1.5,"temp":21.8}
-```
-
-### Kalibrierung
-
-**SensorHub Backend -> SensorNode**
-```json
-{"t":"set_calib","version":1,"payload":{"ph":{"points":[{"raw":0.0,"val":0.0},{"raw":1.65,"val":7.0},{"raw":3.3,"val":14.0}]},"ec":{"points":[{"raw":0.0,"val":0.0},{"raw":3.3,"val":5.0}]},"calibHash":"abc123"}}
-```
-
-**SensorNode -> SensorHub Backend**
-```json
-{"t":"set_calib_ack"}
-```
-
-## 2) WebSocket Protocol (SensorHub Frontend <-> SensorHub Backend)
-
-Endpoint: `ws://<sensorhub-backend>/api/live`
-
-### SensorHub Frontend -> SensorHub Backend
-```json
-{"t":"sub","setupId":"S12345678"}
-{"t":"unsub","setupId":"S12345678"}
-```
-
-### SensorHub Backend -> SensorHub Frontend
-```json
-{"t":"reading","setupId":"S12345678","ts":123456,"ph":6.5,"ec":1.7,"temp":22.1,"status":["ok"]}
-{"t":"cameraDevices","devices":[{"cameraId":"usb1234","deviceId":"usb1234","alias":"Kamera USB","pnpDeviceId":"USB\\VID_046D&PID_0825","friendlyName":"Logitech HD","containerId":"{...}","status":"online"}]}
-{"t":"reset","reason":"db-reset"}
-{"t":"error","setupId":"S12345678","msg":"setup missing"}
-{"t":"error","msg":"unknown message"}
-```
-
-## 3) Camera Worker Protocol (SensorHub Backend <-> Camera Worker)
-
-Der Camera Worker liefert zwei Modi:
-
-- `--list` gibt JSON mit Kamera-Infos auf Stdout aus.
-- `--device <id>` streamt Frames als Binary-Stream.
-
-### Frame Header (Binary)
-
-Header-Len: 32 Bytes (Little Endian). Byte-Offsets:
-
-- `0..4` Magic (4 Bytes, `FRAM`)
-- `4..6` Version (2 Bytes)
-- `6..8` HeaderLen (2 Bytes, kann > 32 sein)
-- `8..16` Sequence (8 Bytes)
-- `16..24` TimestampMs (8 Bytes)
-- `24..26` DeviceIdLen (2 Bytes)
-- `26..28` MimeLen (2 Bytes)
-- `28..32` PayloadLen (4 Bytes)
-
-Danach folgen:
-
-1. DeviceId UTF-8 Bytes
-2. MIME UTF-8 Bytes (z.B. `image/jpeg`)
-3. JPEG Payload
-
-### Snapshot / Stream (Uebersicht)
+## UID-basierter Handshake (hello / hello_ack)
+Der Handshake identifiziert Nodes über eine stabile UID und übergibt Capabilities sowie Kalibrierungs-Hash. Das Diagramm zeigt die minimalen Schritte vom ersten Kontakt bis zum akzeptierten Node-Client.
 
 ```mermaid
-flowchart TB
-  subgraph Top[" "]
-    direction LR
-    UI[SensorHub Frontend]
-    API[SensorHub Backend API]
-  end
+flowchart LR
+    SensorNode["SensorNode (RP2040)"]
+    SerialNodeClient["Serial / NodeClient"]
+    BackendAPI["SensorHub Backend API"]
+    Database["Datenbank (SQLite)"]
 
-  subgraph Bottom[" "]
-    direction LR
-    Worker[Camera Worker]
-  end
+    SensorNode -->|hello JSON Line| SerialNodeClient
+    SerialNodeClient -->|hello_ack JSON Line| SensorNode
+    SerialNodeClient --> BackendAPI
+    BackendAPI --> Database
 
-  UI -->|GET /api/setups/<setupId>/camera/snapshot| API
-  API -->|start --device <id>| Worker
-  Worker -->|FRAM + JPEG payload| API
-  API -->|image/jpeg| UI
+    classDef frontend fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1;
+    classDef backend fill:#E8F5E9,stroke:#43A047,color:#1B5E20;
+    classDef live fill:#FFF8E1,stroke:#F9A825,color:#8D6E63;
+    classDef serial fill:#E0F2F1,stroke:#00897B,color:#004D40;
+    classDef node fill:#F3E5F5,stroke:#8E24AA,color:#4A148C;
+    classDef worker fill:#FFF3E0,stroke:#FB8C00,color:#E65100;
+    classDef db fill:#FFEBEE,stroke:#E53935,color:#B71C1C;
+    classDef photos fill:#FCE4EC,stroke:#D81B60,color:#880E4F;
 
-  UI -->|GET /api/setups/<setupId>/camera/stream| API
-  API -->|start --device <id>| Worker
-  Worker -->|FRAM + JPEG payload loop| API
-  API -->|multipart/x-mixed-replace| UI
-
-  style UI fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
-  style API fill:#E8F5E9,stroke:#43A047,color:#1B5E20
-  style Worker fill:#FFF3E0,stroke:#FB8C00,color:#E65100
+    class SerialNodeClient serial;
+    class SensorNode node;
+    class BackendAPI backend;
+    class Database db;
 ```
 
-## 4) HTTP REST (SensorHub Frontend <-> SensorHub Backend)
+- Die Node meldet sich aktiv per `hello`, der Backend-Client bestätigt mit `hello_ack`.
+- UID und Capabilities werden gespeichert, damit spätere Reads korrekt geroutet werden.
+- Der Handshake ist die Basis für Online/Offline-Status und Kalibrierungsabgleich.
 
-REST nutzt JSON ueber HTTP. Details siehe `api.md`.
+## Live Reading Message Flow
+Live-Readings werden durch die Backend-Loop zyklisch abgefragt und per WebSocket an abonnierte Clients gesendet. Das Diagramm zeigt den Datenfluss vom Sensor bis ins Frontend.
+
+```mermaid
+flowchart LR
+    SensorNode["SensorNode (RP2040)"]
+    SerialNodeClient["Serial / NodeClient"]
+    BackendAPI["SensorHub Backend API"]
+    LiveLayer["WebSocket / Live Layer"]
+    Frontend["SensorHub Frontend"]
+    Database["Datenbank (SQLite)"]
+
+    BackendAPI -->|get_all| SerialNodeClient
+    SerialNodeClient -->|all| BackendAPI
+    BackendAPI --> Database
+    BackendAPI --> LiveLayer
+    LiveLayer --> Frontend
+
+    classDef frontend fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1;
+    classDef backend fill:#E8F5E9,stroke:#43A047,color:#1B5E20;
+    classDef live fill:#FFF8E1,stroke:#F9A825,color:#8D6E63;
+    classDef serial fill:#E0F2F1,stroke:#00897B,color:#004D40;
+    classDef node fill:#F3E5F5,stroke:#8E24AA,color:#4A148C;
+    classDef worker fill:#FFF3E0,stroke:#FB8C00,color:#E65100;
+    classDef db fill:#FFEBEE,stroke:#E53935,color:#B71C1C;
+    classDef photos fill:#FCE4EC,stroke:#D81B60,color:#880E4F;
+
+    class Frontend frontend;
+    class BackendAPI backend;
+    class LiveLayer live;
+    class SerialNodeClient serial;
+    class SensorNode node;
+    class Database db;
+```
+
+- Die zyklische Abfrage erzeugt sowohl Live-Updates als auch persistente Historie.
+- WebSocket-Subscriptions sind setup-basiert, wodurch mehrere Setups parallel unterstützt werden.
+- Das Frontend erhält nur relevante Daten, nicht den gesamten Datenstrom.
+
+## WebSocket Messages (sub/unsub/reading/cameraDevices/…)
+WebSocket-Kommunikation läuft über `/api/live`. Der Client abonniert Setups und erhält Messwerte sowie Kamera-Gerätelisten.
+
+Client:
+- `{ "t": "sub", "setupId": "S1234" }`
+- `{ "t": "unsub", "setupId": "S1234" }`
+
+Server:
+- `{ "t": "reading", "setupId": "...", "ts": 123, "ph": 6.8, "ec": 1.4, "temp": 22.1, "status": ["ok"] }`
+- `{ "t": "cameraDevices", "devices": [ ... ] }`
+- `{ "t": "device", "setupId": "...", "node": "...", "camera": "..." }`
+- `{ "t": "reset", "reason": "..." }`
+- `{ "t": "error", "msg": "..." }`
+
+## Camera Worker Protocol (list/device streaming)
+Der Camera Worker ist ein separater Prozess. Er liefert Frames als Binärformat mit Header und JPEG-Payload. `--list` gibt eine JSON-Liste der Devices aus, `--device <id>` streamt Frames.
+
+Dieses Diagramm zeigt den Ablauf für Snapshot/Stream inklusive Speicherung von Fotos.
+
+```mermaid
+flowchart LR
+    Frontend["SensorHub Frontend"]
+    BackendAPI["SensorHub Backend API"]
+    CameraWorker["Camera Worker (C#)"]
+    PhotoFS["Dateisystem / Photos"]
+
+    Frontend -->|/camera/stream| BackendAPI
+    BackendAPI -->|start worker| CameraWorker
+    CameraWorker -->|FRAM + JPEG| BackendAPI
+    BackendAPI --> Frontend
+    Frontend -->|/capture-photo| BackendAPI
+    BackendAPI -->|snapshot| CameraWorker
+    BackendAPI --> PhotoFS
+
+    classDef frontend fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1;
+    classDef backend fill:#E8F5E9,stroke:#43A047,color:#1B5E20;
+    classDef live fill:#FFF8E1,stroke:#F9A825,color:#8D6E63;
+    classDef serial fill:#E0F2F1,stroke:#00897B,color:#004D40;
+    classDef node fill:#F3E5F5,stroke:#8E24AA,color:#4A148C;
+    classDef worker fill:#FFF3E0,stroke:#FB8C00,color:#E65100;
+    classDef db fill:#FFEBEE,stroke:#E53935,color:#B71C1C;
+    classDef photos fill:#FCE4EC,stroke:#D81B60,color:#880E4F;
+
+    class Frontend frontend;
+    class BackendAPI backend;
+    class CameraWorker worker;
+    class PhotoFS photos;
+```
+
+- Der Stream nutzt fortlaufende Frames; ein Snapshot speichert zusätzlich ein JPEG im Dateisystem.
+- Die Frontend-Preview verwendet den Stream-Endpunkt, Fotos werden per Capture-Endpoint ausgelöst.
+- Der Worker kapselt die Windows-spezifische Kameraschnittstelle und bleibt austauschbar.
