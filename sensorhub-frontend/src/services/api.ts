@@ -98,15 +98,15 @@ export const setNodeMode = async (uid: string, mode: "real" | "debug"): Promise<
   await sendNodeCommand(uid, { t: "set_mode", mode });
 };
 
-export const setNodeSim = async (
+export const setNodeValues = async (
   uid: string,
   payload: { ph?: number; ec?: number; temp?: number }
 ): Promise<void> => {
   await sendNodeCommand(uid, {
-    t: "set_sim",
-    simPh: payload.ph,
-    simEc: payload.ec,
-    simTemp: payload.temp,
+    t: "set_values",
+    ph: payload.ph,
+    ec: payload.ec,
+    temp: payload.temp,
   });
 };
 

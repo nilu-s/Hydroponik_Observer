@@ -69,8 +69,7 @@ im FastAPI-Standard: `{ "detail": "..." }`.
     - `{ "t": "hello" }`
     - `{ "t": "get_all" }`
     - `{ "t": "set_mode", "mode": "real" | "debug" }`
-  - `{ "t": "set_sim", "simPh"?, "simEc"?, "simTemp"? }`
-    (REST nimmt `sim*` entgegen, Backend mappt zu `ph/ec/temp` fuer das Node-Protokoll)
+  - `{ "t": "set_values", "ph"?, "ec"?, "temp"? }`
   - Response: `{ ok }` oder Node-Antwort, je nach Command
 
 ## Cameras

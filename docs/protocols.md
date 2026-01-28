@@ -13,15 +13,15 @@ Wichtige Nachrichtentypen:
 - `hello` / `hello_ack`: Handshake und Capabilities
 - `get_all` / `all`: Abfrage der aktuellen Messwerte
 - `set_mode`: Umschalten zwischen `real` und `debug`
-- `set_sim`: Setzen von Simulationswerten
+- `set_values`: Setzen von Zielwerten (z.B. Debug/Simulation)
 - `set_calib` / `set_calib_ack`: Kalibrierungsdaten übertragen
 
-### set_sim (Serial)
+### set_values (Serial)
 Die Node erwartet die Felder `ph`, `ec`, `temp` direkt im Payload.
 
 Beispiel:
 ```json
-{"t":"set_sim","ph":6.5,"ec":1.7,"temp":22.3}
+{"t":"set_values","ph":6.5,"ec":1.7,"temp":22.3}
 ```
 
 ### set_calib (Serial)

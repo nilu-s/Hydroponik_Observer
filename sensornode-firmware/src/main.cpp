@@ -319,7 +319,7 @@ static void handleSetMode(JsonObject payload) {
   nodeMode = MODE_REAL;
 }
 
-static void handleSetSim(JsonObject payload) {
+static void handleSetValues(JsonObject payload) {
   if (payload.containsKey("ph")) {
     debugPh = payload["ph"].as<float>();
   }
@@ -405,8 +405,8 @@ static void handleMessage(const String &line) {
     handleSetMode(doc.as<JsonObject>());
     return;
   }
-  if (String(type) == "set_sim") {
-    handleSetSim(doc.as<JsonObject>());
+  if (String(type) == "set_values") {
+    handleSetValues(doc.as<JsonObject>());
     return;
   }
   if (String(type) == "set_calib") {

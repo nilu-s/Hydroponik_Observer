@@ -65,8 +65,8 @@ class Calibration(BaseModel):
 
 
 class NodeCommandRequest(BaseModel):
-    t: Literal["hello", "get_all", "set_mode", "set_sim"]
+    t: Literal["hello", "get_all", "set_mode", "set_values"]
     mode: Optional[Literal["real", "debug"]] = None
-    simPh: Optional[float] = None
-    simEc: Optional[float] = None
-    simTemp: Optional[float] = None
+    ph: Optional[float] = None
+    ec: Optional[float] = None
+    temp: Optional[float] = None

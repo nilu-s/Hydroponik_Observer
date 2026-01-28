@@ -105,16 +105,16 @@ def post_node_command(uid: str, payload: NodeCommandRequest) -> dict:
             status_json=None,
         )
         return {"ok": True}
-    if payload.t == "set_sim":
-        if payload.simPh is None and payload.simEc is None and payload.simTemp is None:
-            raise HTTPException(status_code=400, detail="missing sim values")
-        message = {"t": "set_sim"}
-        if payload.simPh is not None:
-            message["ph"] = payload.simPh
-        if payload.simEc is not None:
-            message["ec"] = payload.simEc
-        if payload.simTemp is not None:
-            message["temp"] = payload.simTemp
+    if payload.t == "set_values":
+        if payload.ph is None and payload.ec is None and payload.temp is None:
+            raise HTTPException(status_code=400, detail="missing values")
+        message = {"t": "set_values"}
+        if payload.ph is not None:
+            message["ph"] = payload.ph
+        if payload.ec is not None:
+            message["ec"] = payload.ec
+        if payload.temp is not None:
+            message["temp"] = payload.temp
         return client.send_command(message, expect_response=False)
 
     raise HTTPException(status_code=400, detail="unknown command")
