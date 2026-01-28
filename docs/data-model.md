@@ -31,6 +31,7 @@ erDiagram
     int last_seen_at
     string status
     string last_error
+    string status_json
   }
 
   readings {
@@ -80,7 +81,7 @@ erDiagram
 
 ### nodes
 
-- `node_id` (PK, z.B. COM Port)
+- `node_id` (PK, RP2040 UID)
 - `name` (Alias)
 - `kind` (real)
 - `fw` (SensorNode Firmware Version)
@@ -89,6 +90,7 @@ erDiagram
 - `last_seen_at`
 - `status` (online/offline)
 - `last_error`
+- `status_json` (Metadaten, z.B. letzter `port`)
 
 ### calibration
 
@@ -130,7 +132,7 @@ erDiagram
 ### Setup (SensorHub Frontend)
 
 - `setupId` -> `setups.setup_id`
-- `port` -> `setups.node_id`
+- `nodeId` -> `setups.node_id`
 - `cameraPort` -> `setups.camera_id`
 - `valueIntervalMinutes` -> `setups.value_interval_minutes` (Minutenwert)
 - `photoIntervalMinutes` -> `setups.photo_interval_minutes` (Minutenwert)
@@ -138,7 +140,8 @@ erDiagram
 
 ### NodeInfo (SensorHub Frontend)
 
-- `port` -> `nodes.node_id`
+- `nodeId` -> `nodes.node_id`
+- `port` -> `nodes.status_json` (Metadatum)
 - `alias` -> `nodes.name`
 - `kind` -> `nodes.kind`
 - `fw` -> `nodes.fw`

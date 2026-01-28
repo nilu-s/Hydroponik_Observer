@@ -135,14 +135,14 @@ const HomePage = ({ onOpenSettings }: Props) => {
 
   const handleCreate = async (payload: {
     name: string;
-    port: string | null;
+    nodeId: string | null;
     cameraPort: string | null;
     valueIntervalMinutes: number;
     photoIntervalMinutes: number;
   }) => {
     const created = await createSetup(payload.name);
     const patched = await patchSetup(created.setupId, {
-      port: payload.port,
+      nodeId: payload.nodeId,
       cameraPort: payload.cameraPort,
       valueIntervalMinutes: payload.valueIntervalMinutes,
       photoIntervalMinutes: payload.photoIntervalMinutes,

@@ -4,7 +4,7 @@ import { CameraDevice, NodeInfo, Setup } from "../../types";
 
 type CreatePayload = {
   name: string;
-  port: string | null;
+  nodeId: string | null;
   cameraPort: string | null;
   valueIntervalMinutes: number;
   photoIntervalMinutes: number;
@@ -20,14 +20,17 @@ type Props = {
 const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
-  const [port, setPort] = useState("");
+  const [nodeId, setNodeId] = useState("");
   const [cameraPort, setCameraPort] = useState("");
   const [valueIntervalMinutes, setValueIntervalMinutes] = useState(30);
   const [photoIntervalMinutes, setPhotoIntervalMinutes] = useState(720);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const assignedNodes = useMemo(
-    () => new Set(setups.map((setup) => setup.port).filter(Boolean)),
+    () =>
+      new Set(
+        setups.map((setup) => setup.nodeId ?? setup.port).filter(Boolean)
+      ),
     [setups]
   );
   const assignedCameras = useMemo(
@@ -35,7 +38,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
     [setups]
   );
 
-  const isNodeShared = !!port && assignedNodes.has(port);
+  const isNodeShared = !!nodeId && assignedNodes.has(nodeId);
   const isCameraShared = !!cameraPort && assignedCameras.has(cameraPort);
 
   const cameraOptions = cameraDevices;
@@ -61,7 +64,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
 
   const resetWizard = () => {
     setName("");
-    setPort("");
+    setNodeId("");
     setCameraPort("");
     setValueIntervalMinutes(30);
     setPhotoIntervalMinutes(720);
@@ -80,7 +83,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
     try {
       await onCreate({
         name: name.trim(),
-        port: port || null,
+        nodeId: nodeId || null,
         cameraPort: cameraPort || null,
         valueIntervalMinutes: valueIntervalMinutes,
         photoIntervalMinutes: photoIntervalMinutes,
@@ -126,16 +129,22 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                 <label className="label">Node</label>
                 <select
                   className="select"
-                  value={port}
-                  onChange={(event) => setPort(event.target.value)}
+                  value={nodeId}
+                  onChange={(event) => setNodeId(event.target.value)}
                 >
                   <option value="">None</option>
-                  {nodes.map((node) => (
-                    <option key={node.port} value={node.port}>
-                      {node.alias ?? node.port}
-                      {assignedNodes.has(node.port) ? " • shared" : ""}
-                    </option>
-                  ))}
+                  {nodes
+                    .map((node) => ({
+                      ...node,
+                      key: node.nodeId ?? node.port ?? "",
+                    }))
+                    .filter((node) => node.key)
+                    .map((node) => (
+                      <option key={node.key} value={node.key}>
+                        {node.alias ?? node.port ?? node.nodeId ?? node.key}
+                        {assignedNodes.has(node.key) ? " • shared" : ""}
+                      </option>
+                    ))}
                 </select>
                 {isNodeShared && (
                   <div className="hint">Warning: This node is already assigned.</div>

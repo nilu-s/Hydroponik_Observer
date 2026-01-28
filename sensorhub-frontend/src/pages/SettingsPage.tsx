@@ -25,7 +25,7 @@ const SettingsPage = ({ onBack }: Props) => {
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([]);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [selectedPort, setSelectedPort] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [nodeState, setNodeState] = useState<
     Record<
@@ -83,16 +83,23 @@ const SettingsPage = ({ onBack }: Props) => {
     setNodeState((prev) => {
       const next = { ...prev };
       nodes.forEach((node) => {
-        if (!next[node.port]) {
-          next[node.port] = {
-            name: node.alias ?? node.port,
+        const nodeKey = node.nodeId ?? node.port ?? "";
+        if (!nodeKey) {
+          return;
+        }
+        if (!next[nodeKey]) {
+          next[nodeKey] = {
+            name: node.alias ?? node.port ?? node.nodeId ?? nodeKey,
             mode: node.mode ?? "real",
             status: "",
             isBusy: false,
           };
-        } else if (node.alias && next[node.port].name === node.port) {
-          next[node.port] = {
-            ...next[node.port],
+        } else if (
+          node.alias &&
+          (next[nodeKey].name === node.nodeId || next[nodeKey].name === node.port)
+        ) {
+          next[nodeKey] = {
+            ...next[nodeKey],
             name: node.alias,
           };
         }
@@ -122,13 +129,13 @@ const SettingsPage = ({ onBack }: Props) => {
   }, [cameraDevices]);
 
   const updateNodeState = (
-    port: string,
+    nodeId: string,
     patch: Partial<(typeof nodeState)[string]>
   ) => {
     setNodeState((prev) => ({
       ...prev,
-      [port]: {
-        ...(prev[port] ?? {
+      [nodeId]: {
+        ...(prev[nodeId] ?? {
           mode: "real",
           status: "",
           isBusy: false,
@@ -163,12 +170,12 @@ const SettingsPage = ({ onBack }: Props) => {
   };
 
 
-  const handleDeleteNode = async (port: string) => {
-    if (!window.confirm(`Delete node ${port}? This also deletes its photos.`)) {
+  const handleDeleteNode = async (nodeId: string) => {
+    if (!window.confirm(`Delete node ${nodeId}? This also deletes its photos.`)) {
       return;
     }
     try {
-      await deleteNode(port);
+      await deleteNode(nodeId);
       await loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Delete failed";
@@ -189,38 +196,40 @@ const SettingsPage = ({ onBack }: Props) => {
     }
   };
 
-  const handleModeChange = async (port: string, mode: "real" | "debug") => {
-    updateNodeState(port, { mode, isBusy: true, status: "" });
+  const handleModeChange = async (nodeId: string, mode: "real" | "debug") => {
+    updateNodeState(nodeId, { mode, isBusy: true, status: "" });
     try {
-      await setNodeMode(port, mode);
-      updateNodeState(port, { status: "Mode updated." });
+      await setNodeMode(nodeId, mode);
+      updateNodeState(nodeId, { status: "Mode updated." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Command failed";
-      updateNodeState(port, { status: message });
+      updateNodeState(nodeId, { status: message });
     } finally {
-      updateNodeState(port, { isBusy: false });
+      updateNodeState(nodeId, { isBusy: false });
     }
   };
 
-  const handleReadNow = async (port: string) => {
-    updateNodeState(port, { isBusy: true, status: "" });
+  const handleReadNow = async (nodeId: string) => {
+    updateNodeState(nodeId, { isBusy: true, status: "" });
     try {
-      const response = await requestNodeReading(port);
-      updateNodeState(port, { status: `Reply: ${JSON.stringify(response)}` });
+      const response = await requestNodeReading(nodeId);
+      updateNodeState(nodeId, { status: `Reply: ${JSON.stringify(response)}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Command failed";
-      updateNodeState(port, { status: message });
+      updateNodeState(nodeId, { status: message });
     } finally {
-      updateNodeState(port, { isBusy: false });
+      updateNodeState(nodeId, { isBusy: false });
     }
   };
 
-  const selectedNode = selectedPort
-    ? nodes.find((item) => item.port === selectedPort) ?? null
+  const selectedNode = selectedNodeId
+    ? nodes.find((item) => (item.nodeId ?? item.port) === selectedNodeId) ?? null
     : null;
-  const selectedState = selectedPort ? nodeState[selectedPort] ?? null : null;
+  const selectedState = selectedNodeId ? nodeState[selectedNodeId] ?? null : null;
   const selectedAlias =
-    selectedNode && selectedState ? selectedNode.alias ?? selectedNode.port : null;
+    selectedNode && selectedState
+      ? selectedNode.alias ?? selectedNode.port ?? selectedNode.nodeId
+      : null;
   const selectedCamera = selectedCameraId
     ? cameraDevices.find((item) => item.cameraId === selectedCameraId) ?? null
     : null;
@@ -234,16 +243,16 @@ const SettingsPage = ({ onBack }: Props) => {
   const handleCloseModal = async () => {
     if (selectedNode && selectedState && selectedAlias !== null) {
       const trimmed = selectedState.name.trim();
-      const nextAlias = trimmed.length ? trimmed : selectedNode.port;
+      const nextAlias = trimmed.length ? trimmed : selectedNode.nodeId;
       if (nextAlias !== selectedAlias) {
         try {
-          await updateNodeAlias(selectedNode.port, nextAlias);
+          await updateNodeAlias(selectedNode.nodeId, nextAlias);
         } catch {
           // Ignore save errors on close to avoid blocking UX.
         }
       }
     }
-    setSelectedPort(null);
+    setSelectedNodeId(null);
   };
 
   const handleCloseCameraModal = async () => {
@@ -284,16 +293,24 @@ const SettingsPage = ({ onBack }: Props) => {
           <div className="section-title">Nodes</div>
           {nodes.length === 0 && <div className="hint">No nodes found.</div>}
           <div className="device-grid is-compact">
-            {nodes.map((node) => (
+            {nodes
+              .map((node) => ({
+                ...node,
+                key: node.nodeId ?? node.port ?? "",
+              }))
+              .filter((node) => node.key)
+              .map((node) => (
               <button
-                key={node.port}
+                key={node.key}
                 type="button"
                 className={`tile device-tile is-compact${
-                  selectedPort === node.port ? " is-active" : ""
+                  selectedNodeId === node.key ? " is-active" : ""
                 } node-tile`}
-                onClick={() => setSelectedPort(node.port)}
+                onClick={() => setSelectedNodeId(node.key)}
               >
-                <div className="device-title">{node.alias ?? node.port}</div>
+                <div className="device-title">
+                  {node.key} · {node.alias ?? node.port ?? node.nodeId ?? node.key}
+                </div>
                 <div className="hint">
                   {node.status} · {node.mode ?? "unknown"}
                 </div>
@@ -373,9 +390,9 @@ const SettingsPage = ({ onBack }: Props) => {
                   className="input compact"
                   value={selectedState.name}
                   onChange={(event) =>
-                    updateNodeState(selectedNode.port, { name: event.target.value })
+                    updateNodeState(selectedNode.nodeId, { name: event.target.value })
                   }
-                  placeholder={selectedNode.port}
+                  placeholder={selectedNode.port ?? selectedNode.nodeId}
                 />
               </div>
             </div>
@@ -387,7 +404,7 @@ const SettingsPage = ({ onBack }: Props) => {
                   value={selectedState.mode}
                   onChange={(event) =>
                     handleModeChange(
-                      selectedNode.port,
+                      selectedNode.nodeId,
                       event.target.value as "real" | "debug"
                     )
                   }
@@ -401,7 +418,7 @@ const SettingsPage = ({ onBack }: Props) => {
                 <div className="row compact">
                   <button
                     className="button small"
-                    onClick={() => handleReadNow(selectedNode.port)}
+                  onClick={() => handleReadNow(selectedNode.nodeId)}
                     disabled={selectedState.isBusy}
                   >
                     Read now
@@ -413,7 +430,7 @@ const SettingsPage = ({ onBack }: Props) => {
             <div className="modal-actions modal-footer">
               <button
                 className="button small danger"
-                onClick={() => handleDeleteNode(selectedNode.port)}
+                onClick={() => handleDeleteNode(selectedNode.nodeId)}
               >
                 Delete node
               </button>

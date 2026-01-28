@@ -11,7 +11,7 @@ class SetupCreate(BaseModel):
 
 class SetupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    port: Optional[str] = None
+    nodeId: Optional[str] = None
     cameraPort: Optional[str] = None
     valueIntervalMinutes: Optional[int] = Field(default=None, ge=1)
     photoIntervalMinutes: Optional[int] = Field(default=None, ge=1)
@@ -20,7 +20,7 @@ class SetupUpdate(BaseModel):
 class Setup(BaseModel):
     setupId: str
     name: str
-    port: Optional[str]
+    nodeId: Optional[str]
     cameraPort: Optional[str]
     valueIntervalMinutes: int
     photoIntervalMinutes: int
@@ -28,7 +28,8 @@ class Setup(BaseModel):
 
 
 class Node(BaseModel):
-    port: str
+    nodeId: str
+    port: Optional[str] = None
     alias: Optional[str] = None
     kind: str
     fw: Optional[str] = None
@@ -56,7 +57,7 @@ class Reading(BaseModel):
 
 
 class Calibration(BaseModel):
-    port: str
+    nodeId: str
     calibVersion: int
     calibHash: str
     payloadJson: str

@@ -44,7 +44,8 @@ def init_db(reset: bool = False) -> None:
                 mode TEXT,
                 last_seen_at INTEGER,
                 status TEXT,
-                last_error TEXT
+                last_error TEXT,
+                status_json TEXT
             );
             CREATE TABLE IF NOT EXISTS calibration (
                 node_id TEXT PRIMARY KEY,
@@ -77,6 +78,7 @@ def init_db(reset: bool = False) -> None:
             );
             """
         )
+        _ensure_schema(conn)
 
 
 def reset_db_contents() -> None:
@@ -92,6 +94,12 @@ def reset_db_contents() -> None:
         conn.execute("PRAGMA foreign_keys=ON;")
     close_connections()
     init_db()
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()]
+    if "status_json" not in cols:
+        conn.execute("ALTER TABLE nodes ADD COLUMN status_json TEXT")
 
 
 @contextmanager
@@ -188,7 +196,7 @@ def update_setup(setup_id: str, updates: dict[str, Any]) -> Optional[dict[str, A
     values: list[Any] = []
     mapping = {
         "name": "name",
-        "port": "node_id",
+        "nodeId": "node_id",
         "cameraPort": "camera_id",
         "valueIntervalMinutes": "value_interval_minutes",
         "photoIntervalMinutes": "photo_interval_minutes",
@@ -222,13 +230,16 @@ def upsert_node(
     mode: Optional[str],
     status: str,
     last_error: Optional[str],
+    status_json: Optional[str],
 ) -> None:
     last_seen_at = _now_ms()
     with _get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO nodes (node_id, name, kind, fw, cap_json, mode, last_seen_at, status, last_error)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO nodes (
+                node_id, name, kind, fw, cap_json, mode, last_seen_at, status, last_error, status_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(node_id) DO UPDATE SET
                 name=COALESCE(excluded.name, nodes.name),
                 kind=excluded.kind,
@@ -237,7 +248,8 @@ def upsert_node(
                 mode=COALESCE(excluded.mode, nodes.mode),
                 last_seen_at=excluded.last_seen_at,
                 status=excluded.status,
-                last_error=excluded.last_error
+                last_error=excluded.last_error,
+                status_json=COALESCE(excluded.status_json, nodes.status_json)
             """,
             (
                 node_id,
@@ -249,6 +261,7 @@ def upsert_node(
                 last_seen_at,
                 status,
                 last_error,
+                status_json,
             ),
         )
 
@@ -306,6 +319,23 @@ def delete_node(node_id: str) -> None:
 def delete_calibration(node_id: str) -> None:
     with _get_conn() as conn:
         conn.execute("DELETE FROM calibration WHERE node_id = ?", (node_id,))
+
+
+def migrate_node_id(old_id: str, new_id: str) -> None:
+    if not old_id or not new_id or old_id == new_id:
+        return
+    with _get_conn() as conn:
+        conn.execute("UPDATE setups SET node_id = ? WHERE node_id = ?", (new_id, old_id))
+        conn.execute("UPDATE calibration SET node_id = ? WHERE node_id = ?", (new_id, old_id))
+        conn.execute("UPDATE readings SET node_id = ? WHERE node_id = ?", (new_id, old_id))
+        existing_new = conn.execute(
+            "SELECT node_id FROM nodes WHERE node_id = ?",
+            (new_id,),
+        ).fetchone()
+        if existing_new:
+            conn.execute("DELETE FROM nodes WHERE node_id = ?", (old_id,))
+        else:
+            conn.execute("UPDATE nodes SET node_id = ? WHERE node_id = ?", (new_id, old_id))
 
 
 def insert_reading(
@@ -382,6 +412,12 @@ def encode_cap_json(cap: Optional[dict[str, Any]]) -> Optional[str]:
     if cap is None:
         return None
     return json.dumps(cap)
+
+
+def encode_status_json(status: Optional[dict[str, Any]]) -> Optional[str]:
+    if status is None:
+        return None
+    return json.dumps(status)
 
 
 def get_calibration(node_id: str) -> Optional[dict[str, Any]]:

@@ -39,7 +39,7 @@ def get_setups() -> list[dict]:
         {
             "setupId": row["setup_id"],
             "name": row["name"],
-            "port": row["node_id"],
+            "nodeId": row["node_id"],
             "cameraPort": row.get("camera_id"),
             "valueIntervalMinutes": row.get("value_interval_minutes")
             or DEFAULT_VALUE_INTERVAL_MINUTES,
@@ -57,7 +57,7 @@ def post_setup(payload: SetupCreate) -> dict:
     return {
         "setupId": row["setup_id"],
         "name": row["name"],
-        "port": row["node_id"],
+        "nodeId": row["node_id"],
         "cameraPort": row.get("camera_id"),
         "valueIntervalMinutes": row.get("value_interval_minutes")
         or DEFAULT_VALUE_INTERVAL_MINUTES,
@@ -81,7 +81,7 @@ def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
     return {
         "setupId": row["setup_id"],
         "name": row["name"],
-        "port": row["node_id"],
+        "nodeId": row["node_id"],
         "cameraPort": row.get("camera_id"),
         "valueIntervalMinutes": row.get("value_interval_minutes")
         or DEFAULT_VALUE_INTERVAL_MINUTES,

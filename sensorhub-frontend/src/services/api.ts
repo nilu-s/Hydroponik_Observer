@@ -74,16 +74,16 @@ export const getNodes = async (): Promise<NodeInfo[]> => {
   return handleResponse<NodeInfo[]>(res);
 };
 
-export const deleteNode = async (port: string): Promise<void> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}`, {
+export const deleteNode = async (uid: string): Promise<void> => {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${uid}`, {
     method: "DELETE",
     headers: buildHeaders(),
   });
   await handleResponse(res);
 };
 
-export const updateNodeAlias = async (port: string, alias: string): Promise<NodeInfo> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}`, {
+export const updateNodeAlias = async (uid: string, alias: string): Promise<NodeInfo> => {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${uid}`, {
     method: "PATCH",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ alias }),
@@ -92,10 +92,10 @@ export const updateNodeAlias = async (port: string, alias: string): Promise<Node
 };
 
 export const sendNodeCommand = async (
-  port: string,
+  uid: string,
   payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}/command`, {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${uid}/command`, {
     method: "POST",
     headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
@@ -103,15 +103,15 @@ export const sendNodeCommand = async (
   return handleResponse<Record<string, unknown>>(res);
 };
 
-export const setNodeMode = async (port: string, mode: "real" | "debug"): Promise<void> => {
-  await sendNodeCommand(port, { t: "set_mode", mode });
+export const setNodeMode = async (uid: string, mode: "real" | "debug"): Promise<void> => {
+  await sendNodeCommand(uid, { t: "set_mode", mode });
 };
 
 export const setNodeSim = async (
-  port: string,
+  uid: string,
   payload: { ph?: number; ec?: number; temp?: number }
 ): Promise<void> => {
-  await sendNodeCommand(port, {
+  await sendNodeCommand(uid, {
     t: "set_sim",
     simPh: payload.ph,
     simEc: payload.ec,
@@ -119,8 +119,8 @@ export const setNodeSim = async (
   });
 };
 
-export const requestNodeReading = async (port: string): Promise<Record<string, unknown>> => {
-  return sendNodeCommand(port, { t: "get_all" });
+export const requestNodeReading = async (uid: string): Promise<Record<string, unknown>> => {
+  return sendNodeCommand(uid, { t: "get_all" });
 };
 
 export const getCameraDevices = async (): Promise<CameraDevice[]> => {

@@ -6,7 +6,7 @@ type Props = {
   isOpen: boolean;
   setupName: string;
   isSavingName: boolean;
-  port: string | null;
+  nodeId: string | null;
   cameraPort: string | null;
   nodes: NodeInfo[];
   cameraOptions: CameraDevice[];
@@ -15,7 +15,7 @@ type Props = {
   onClose: () => void;
   onNameChange: (value: string) => void;
   onSaveName: () => void;
-  onNodeChange: (port: string | null) => void;
+  onNodeChange: (nodeId: string | null) => void;
   onCameraChange: (cameraPort: string | null) => void;
   onDeleteSetup: () => void;
   children: ReactNode;
@@ -25,7 +25,7 @@ const SetupSettingsModal: FC<Props> = ({
   isOpen,
   setupName,
   isSavingName,
-  port,
+  nodeId,
   cameraPort,
   nodes,
   cameraOptions,
@@ -83,21 +83,27 @@ const SetupSettingsModal: FC<Props> = ({
             <div className="setup-row">
               <label className="label">Node</label>
               <select
-                className={`select${sharedNodeIds.has(port ?? "") ? " select-shared" : ""}`}
-                value={port ?? ""}
+                className={`select${sharedNodeIds.has(nodeId ?? "") ? " select-shared" : ""}`}
+                value={nodeId ?? ""}
                 onChange={(event) => onNodeChange(event.target.value || null)}
               >
                 <option value="">None</option>
-                {nodes.map((node) => (
-                  <option
-                    key={node.port}
-                    value={node.port}
-                    className={sharedNodeIds.has(node.port) ? "option-shared" : ""}
-                  >
-                    {(node.alias ?? node.port)} ({node.kind})
-                    {sharedNodeIds.has(node.port) ? " • shared" : ""}
-                  </option>
-                ))}
+                {nodes
+                  .map((node) => ({
+                    ...node,
+                    key: node.nodeId ?? node.port ?? "",
+                  }))
+                  .filter((node) => node.key)
+                  .map((node) => (
+                    <option
+                      key={node.key}
+                      value={node.key}
+                      className={sharedNodeIds.has(node.key) ? "option-shared" : ""}
+                    >
+                      {node.key} · {(node.alias ?? node.port ?? node.nodeId ?? node.key)} ({node.kind})
+                      {sharedNodeIds.has(node.key) ? " • shared" : ""}
+                    </option>
+                  ))}
               </select>
             </div>
             <div className="setup-row">

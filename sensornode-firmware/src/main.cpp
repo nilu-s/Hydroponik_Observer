@@ -3,6 +3,7 @@
 #include <DallasTemperature.h>
 #include <OneWire.h>
 #include <stdio.h>
+#include <hardware/flash.h>
 
 static const uint32_t SERIAL_BAUDRATE = 115200;
 static const int PH_PIN = 28;   // ADC2 (GPIO28)
@@ -44,6 +45,7 @@ static Sample samples[MAX_SAMPLES];
 static size_t sampleCount = 0;
 static size_t sampleIndex = 0;
 static uint32_t lastSampleAt = 0;
+static String nodeUid;
 
 static float debugPh = 6.2f;
 static float debugEc = 1.6f;
@@ -66,6 +68,17 @@ static float clampf(float value, float minVal, float maxVal) {
     return maxVal;
   }
   return value;
+}
+
+static String readBoardUid() {
+  uint8_t id[FLASH_UNIQUE_ID_SIZE_BYTES];
+  flash_get_unique_id(id);
+  char buffer[FLASH_UNIQUE_ID_SIZE_BYTES * 2 + 1];
+  for (size_t i = 0; i < FLASH_UNIQUE_ID_SIZE_BYTES; i++) {
+    sprintf(&buffer[i * 2], "%02x", id[i]);
+  }
+  buffer[FLASH_UNIQUE_ID_SIZE_BYTES * 2] = '\0';
+  return String(buffer);
 }
 
 static float advanceTenths(float value, float minVal, float maxVal) {
@@ -226,10 +239,11 @@ static void sendJson(const JsonDocument &doc) {
 }
 
 static void sendHello(const String &rawLine) {
-  StaticJsonDocument<384> response;
+  StaticJsonDocument<512> response;
   response["t"] = "hello";
   response["raw"] = rawLine;
   response["fw"] = FW_VERSION;
+  response["uid"] = nodeUid;
   JsonObject cap = response.createNestedObject("cap");
   cap["ph"] = true;
   cap["ec"] = true;
@@ -245,10 +259,11 @@ static void sendHello(const String &rawLine) {
 }
 
 static void handleHello(const String &rawLine) {
-  StaticJsonDocument<384> response;
+  StaticJsonDocument<512> response;
   response["t"] = "hello_ack";
   response["raw"] = rawLine;
   response["fw"] = FW_VERSION;
+  response["uid"] = nodeUid;
   JsonObject cap = response.createNestedObject("cap");
   cap["ph"] = true;
   cap["ec"] = true;
@@ -418,6 +433,7 @@ void setup() {
   pinMode(PH_PIN, INPUT);
   pinMode(EC_PIN, INPUT);
   tempSensor.begin();
+  nodeUid = readBoardUid();
   const uint32_t seed =
       (static_cast<uint32_t>(analogRead(PH_PIN)) << 16) ^
       static_cast<uint32_t>(analogRead(EC_PIN)) ^
@@ -439,7 +455,7 @@ void loop() {
       }
     } else if (ch != '\r') {
       inputBuffer += ch;
-      if (inputBuffer.length() > 512) {
+      if (inputBuffer.length() > 768) {
         inputBuffer = "";
       }
     }

@@ -9,7 +9,7 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 
 - Zeitstempel (`ts`, `createdAt`, `lastSeenAt`) sind Unix Epoch in Millisekunden.
 - `status_json` ist ein JSON-String, der ein Array enthaelt (z.B. `["ok"]`).
-- Nullable Felder koennen `null` sein (z.B. `cameraPort`, `port`).
+- Nullable Felder koennen `null` sein (z.B. `cameraPort`, `nodeId`).
 - Auth: Alle Endpunkte benoetigen `Authorization: Bearer <JWT>`.
   - Der JWT muss eine `role` oder `roles`-Claim enthalten (`viewer`, `operator`, `admin`).
   - Schreiboperationen benoetigen mind. `operator`, gefaehrliche Loeschungen `admin`.
@@ -19,14 +19,14 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 ## Setups
 
 - `GET /setups` -> Liste aller Setups
-  - Response: `{ setupId, name, port, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }[]`
+  - Response: `{ setupId, name, nodeId, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }[]`
   - `valueIntervalMinutes` und `photoIntervalMinutes` sind Minutenwerte (Defaults aus Backend).
 - `POST /setups` -> Setup anlegen
   - Body: `{ "name": "Setup A" }`
-  - Response: `{ setupId, name, port, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }`
+  - Response: `{ setupId, name, nodeId, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }`
 - `PATCH /setups/{setupId}` -> Setup aktualisieren
-  - Body: `{ "name"?, "port"?, "cameraPort"?, "valueIntervalMinutes"?, "photoIntervalMinutes"? }`
-  - Response: `{ setupId, name, port, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }`
+  - Body: `{ "name"?, "nodeId"?, "cameraPort"?, "valueIntervalMinutes"?, "photoIntervalMinutes"? }`
+  - Response: `{ setupId, name, nodeId, cameraPort, valueIntervalMinutes, photoIntervalMinutes, createdAt }`
   - Fehler: `400` wenn `cameraPort` gesetzt wird, die Kamera aber nicht existiert.
 - `DELETE /setups/{setupId}` -> Setup loeschen
   - Response: `{ ok, deleted, deletedPhotos }`
@@ -55,16 +55,16 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 ## Nodes
 
 - `GET /nodes` -> Liste erkannter Nodes
-  - Response: `{ port, alias, kind, fw, capJson, mode, lastSeenAt, status, lastError }[]`
+  - Response: `{ nodeId, port?, alias, kind, fw, capJson, mode, lastSeenAt, status, lastError }[]`
 - `GET /nodes/ports` -> Serial Port Kandidaten (RP2040)
   - Response: `{ device, name, description, hwid, manufacturer, serial_number, vid, pid, location, interface }[]`
-- `PATCH /nodes/{port}` -> Alias setzen
+- `PATCH /nodes/{uid}` -> Alias setzen
   - Body: `{ "alias": "Node A" }`
-  - Response: `{ port, alias, kind, fw, capJson, mode, lastSeenAt, status, lastError }`
-- `DELETE /nodes/{port}` -> Node loeschen
+  - Response: `{ nodeId, port?, alias, kind, fw, capJson, mode, lastSeenAt, status, lastError }`
+- `DELETE /nodes/{uid}` -> Node loeschen
   - Response: `{ ok, affectedSetups, deletedPhotos }`
   - Fehler: `404` wenn Node nicht existiert.
-- `POST /nodes/{port}/command` -> Serial Command
+- `POST /nodes/{uid}/command` -> Serial Command
   - Body je nach `t`:
     - `{ "t": "hello" }`
     - `{ "t": "get_all" }`
@@ -114,7 +114,7 @@ Response:
 {
   "setupId": "S1a2b3c4d",
   "name": "Setup A",
-  "port": null,
+  "nodeId": null,
   "cameraPort": null,
   "valueIntervalMinutes": 10,
   "photoIntervalMinutes": 30,
@@ -134,7 +134,7 @@ Response:
 {
   "setupId": "S1a2b3c4d",
   "name": "Setup A",
-  "port": "COM4",
+  "nodeId": "e6616403e72f9a01",
   "cameraPort": "usb1234",
   "valueIntervalMinutes": 5,
   "photoIntervalMinutes": 15,
@@ -148,7 +148,7 @@ Response:
 ```json
 {
   "readings": [
-    { "id": 12, "setup_id": "S1a2b3c4d", "node_id": "COM4", "ts": 1769608113000, "ph": 6.4, "ec": 1.6, "temp": 22.1, "status_json": "[\"ok\"]" }
+    { "id": 12, "setup_id": "S1a2b3c4d", "node_id": "e6616403e72f9a01", "ts": 1769608113000, "ph": 6.4, "ec": 1.6, "temp": 22.1, "status_json": "[\"ok\"]" }
   ],
   "photos": [
     { "id": 1769608113123, "setup_id": "S1a2b3c4d", "camera_id": "usb1234", "ts": 1769608113123, "path": "/data/photos/S1a2b3c4d/S1a2b3c4d_2026-01-28_14-48-33.jpg" }
@@ -179,6 +179,7 @@ Response:
 ```json
 [
   {
+    "nodeId": "e6616403e72f9a01",
     "port": "COM4",
     "alias": "Node A",
     "kind": "real",

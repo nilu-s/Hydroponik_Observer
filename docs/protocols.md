@@ -47,14 +47,16 @@ flowchart TB
 
 ### Handshake
 
+Identifikation erfolgt ueber die unveraenderliche RP2040-UID (`uid` Feld).
+
 **SensorNode -> SensorHub Backend**
 ```json
-{"t":"hello","fw":"pico-0.1.0","cap":{"ph":true,"ec":true,"temp":true,"debug":true,"calib":true,"pins":{"ph":"adc2","ec":"adc0","temp":"gpio17"}},"calibHash":"default"}
+{"t":"hello","fw":"pico-0.1.0","uid":"e6616403e72f9a01","cap":{"ph":true,"ec":true,"temp":true,"debug":true,"calib":true,"pins":{"ph":"adc2","ec":"adc0","temp":"gpio17"}},"calibHash":"default"}
 ```
 
 **SensorHub Backend -> SensorNode**
 ```json
-{"t":"hello_ack","fw":"pico-0.1.0","cap":{...},"calibHash":"default"}
+{"t":"hello_ack","fw":"pico-0.1.0","uid":"e6616403e72f9a01","cap":{...},"calibHash":"default"}
 ```
 
 ### Messwerte

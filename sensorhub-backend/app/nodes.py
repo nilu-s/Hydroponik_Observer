@@ -25,10 +25,12 @@ from .scheduler import run_periodic
 from .db import (
     _now_ms,
     encode_cap_json,
+    encode_status_json,
     get_calibration,
     get_node,
     get_setup,
     mark_nodes_offline,
+    migrate_node_id,
     upsert_node,
     update_node_mode,
 )
@@ -36,6 +38,7 @@ from .db import (
 
 @dataclass
 class NodeHello:
+    uid: Optional[str]
     fw: Optional[str]
     cap: Optional[dict[str, Any]]
     calib_hash: Optional[str]
@@ -190,7 +193,11 @@ def _ensure_client_healthy(node_id: str, client: NodeClient) -> bool:
 def _parse_node_hello(data: dict[str, Any], expected_type: str) -> NodeHello:
     if data.get("t") != expected_type:
         raise RuntimeError("unexpected hello type")
+    uid = data.get("uid")
+    if not isinstance(uid, str) or not uid:
+        uid = None
     return NodeHello(
+        uid=uid,
         fw=data.get("fw"),
         cap=data.get("cap"),
         calib_hash=data.get("calibHash"),
@@ -203,6 +210,7 @@ def _send_hello_ack(ser: serial.Serial, hello: NodeHello) -> None:
         "fw": hello.fw,
         "cap": hello.cap,
         "calibHash": hello.calib_hash,
+        "uid": hello.uid,
     }
     ser.write(json.dumps(payload).encode("utf-8") + b"\n")
 
@@ -251,7 +259,7 @@ def _scan_nodes_once() -> set[str]:
             continue
         try:
             hello = _handshake(port)
-            node_key = port
+            node_key = hello.uid or port
             log_event(
                 "nodes.scan_success",
                 port=port,
@@ -266,6 +274,11 @@ def _scan_nodes_once() -> set[str]:
                 NODE_PORTS[node_key] = port
             NODE_CLIENTS[node_key].hello = hello
             existing_node = get_node(node_key)
+            legacy_node = get_node(port) if port != node_key else None
+            if legacy_node:
+                migrate_node_id(port, node_key)
+                if not existing_node:
+                    existing_node = legacy_node
             name_hint = None if existing_node and existing_node.get("name") else node_key
             upsert_node(
                 node_id=node_key,
@@ -276,6 +289,7 @@ def _scan_nodes_once() -> set[str]:
                 mode=None,
                 status="online",
                 last_error=None,
+                status_json=encode_status_json({"port": port}),
             )
             _refresh_node_mode(node_key)
             try:
@@ -290,6 +304,7 @@ def _scan_nodes_once() -> set[str]:
                     mode=None,
                     status="online",
                     last_error=f"calib sync failed: {exc}",
+                    status_json=encode_status_json({"port": port}),
                 )
         except Exception as exc:
             log_event("nodes.scan_failed", port=port, error=str(exc))

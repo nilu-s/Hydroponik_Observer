@@ -20,6 +20,7 @@ Kameralisten und Frame-Streaming nutzt.
 - Protokoll: JSON Lines ueber Serial (115200 Baud)
 - Modi: `real` und `debug` (simulierte Werte)
 - Kalibrierung: pH (3 Punkte), EC (2 Punkte), Hash fuer Sync
+- Handshake liefert `uid` (RP2040 UID), Backend nutzt diese als `node_id`
 
 ### SensorHub Backend (FastAPI)
 

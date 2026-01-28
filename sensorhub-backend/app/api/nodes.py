@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..config import log_event
@@ -27,7 +29,8 @@ def get_nodes() -> list[dict]:
     rows = list_nodes()
     return [
         {
-            "port": row["node_id"],
+            "nodeId": row["node_id"],
+            "port": (json.loads(row.get("status_json") or "{}") or {}).get("port"),
             "alias": row.get("name"),
             "kind": row["kind"],
             "fw": row["fw"],
@@ -46,24 +49,24 @@ def get_serial_ports() -> list[dict[str, str]]:
     return list_serial_ports()
 
 
-@router.delete("/{port}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
-def delete_node_route(port: str) -> dict:
-    node = get_node(port)
+@router.delete("/{uid}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
+def delete_node_route(uid: str) -> dict:
+    node = get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="node not found")
-    if get_node_client(port):
-        remove_node_client(port)
-    setups = [row for row in list_setups() if row.get("node_id") == port]
+    if get_node_client(uid):
+        remove_node_client(uid)
+    setups = [row for row in list_setups() if row.get("node_id") == uid]
     deleted_photos = 0
     for setup in setups:
         setup_id = setup["setup_id"]
         deleted_photos += delete_setup_assets(setup_id)
-        update_setup(setup_id, {"port": None})
-    delete_calibration(port)
-    delete_node(port)
+        update_setup(setup_id, {"nodeId": None})
+    delete_calibration(uid)
+    delete_node(uid)
     log_event(
         "node.deleted",
-        node_id=port,
+        node_id=uid,
         affected_setups=len(setups),
         deleted_photos=deleted_photos,
     )
@@ -74,9 +77,9 @@ def delete_node_route(port: str) -> dict:
     }
 
 
-@router.post("/{port}/command", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
-def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
-    client = get_node_client(port)
+@router.post("/{uid}/command", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
+def post_node_command(uid: str, payload: NodeCommandRequest) -> dict:
+    client = get_node_client(uid)
     if not client:
         raise HTTPException(status_code=503, detail="node offline")
 
@@ -92,7 +95,7 @@ def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
             expect_response=False,
         )
         upsert_node(
-            node_id=port,
+            node_id=uid,
             name=None,
             kind="real",
             fw=client.hello.fw,
@@ -100,6 +103,7 @@ def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
             mode=payload.mode,
             status="online",
             last_error=None,
+            status_json=None,
         )
         return {"ok": True}
     if payload.t == "set_sim":
@@ -117,14 +121,16 @@ def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
     raise HTTPException(status_code=400, detail="unknown command")
 
 
-@router.patch("/{port}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
-def patch_node(port: str, payload: NodeUpdate) -> dict:
-    node = get_node(port)
+@router.patch("/{uid}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
+def patch_node(uid: str, payload: NodeUpdate) -> dict:
+    node = get_node(uid)
     if not node:
         raise HTTPException(status_code=404, detail="node not found")
-    updated = update_node_alias(port, payload.alias) or node
+    updated = update_node_alias(uid, payload.alias) or node
+    status = json.loads(updated.get("status_json") or "{}") if updated else {}
     return {
-        "port": updated["node_id"],
+        "nodeId": updated["node_id"],
+        "port": status.get("port"),
         "alias": updated.get("name"),
         "kind": updated["kind"],
         "fw": updated["fw"],
