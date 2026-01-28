@@ -2,6 +2,70 @@
 
 Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 
+## ER Diagramm
+
+```mermaid
+erDiagram
+  setups ||--o{ readings : has
+  nodes ||--o{ readings : produces
+  setups ||--o{ cameras : uses
+  nodes ||--|| calibration : has
+
+  setups {
+    string setup_id
+    string name
+    string node_id
+    string camera_id
+    int value_interval_sec
+    int photo_interval_sec
+    int created_at
+  }
+
+  nodes {
+    string node_id
+    string name
+    string kind
+    string fw
+    string cap_json
+    string mode
+    int last_seen_at
+    string status
+    string last_error
+  }
+
+  readings {
+    int id
+    string setup_id
+    string node_id
+    int ts
+    float ph
+    float ec
+    float temp
+    string status_json
+  }
+
+  cameras {
+    string camera_id
+    string port
+    string alias
+    string friendly_name
+    string pnp_device_id
+    string container_id
+    string status
+    int last_seen_at
+    int created_at
+    int updated_at
+  }
+
+  calibration {
+    string node_id
+    int calib_version
+    string calib_hash
+    string payload_json
+    int updated_at
+  }
+```
+
 ## Tabellen
 
 ### setups
@@ -10,8 +74,8 @@ Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 - `name`
 - `node_id` (nullable)
 - `camera_id` (nullable)
-- `value_interval_sec` (interner Name, in Minuten gesetzt)
-- `photo_interval_sec` (interner Name, in Minuten gesetzt)
+- `value_interval_sec` (Legacy-Name, gespeichert in Minuten)
+- `photo_interval_sec` (Legacy-Name, gespeichert in Minuten)
 - `created_at`
 
 ### nodes
@@ -19,7 +83,7 @@ Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 - `node_id` (PK, z.B. COM Port)
 - `name` (Alias)
 - `kind` (real)
-- `fw` (Firmware Version)
+- `fw` (SensorNode Firmware Version)
 - `cap_json` (Capabilities JSON)
 - `mode` (real/debug)
 - `last_seen_at`
@@ -41,7 +105,7 @@ Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 - `node_id`
 - `ts` (Epoch ms)
 - `ph`, `ec`, `temp` (nullable)
-- `status_json` (Array als JSON)
+- `status_json` (JSON-String eines Array)
 
 ### cameras
 
@@ -58,21 +122,21 @@ Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 
 ## Dateien
 
-- `data/photos/<setup_id>/<setup_id>_<timestamp>.jpg`
-- Backend mountet `data/` unter `/data`, z.B. `/data/photos/...`
+- `data/photos/<setup_id>/<setup_id>_<yyyy-mm-dd_HH-MM-SS>.jpg`
+- SensorHub Backend mountet `data/` unter `/data`, z.B. `/data/photos/...`
 
-## Mapping zu Frontend Types
+## Mapping zu SensorHub Frontend Types
 
-### Setup (Frontend)
+### Setup (SensorHub Frontend)
 
 - `setupId` -> `setups.setup_id`
 - `port` -> `setups.node_id`
 - `cameraPort` -> `setups.camera_id`
-- `valueIntervalMinutes` -> `setups.value_interval_sec`
-- `photoIntervalMinutes` -> `setups.photo_interval_sec`
+- `valueIntervalMinutes` -> `setups.value_interval_sec` (Minutenwert)
+- `photoIntervalMinutes` -> `setups.photo_interval_sec` (Minutenwert)
 - `createdAt` -> `setups.created_at` (API-Feld, Frontend-Typ aktuell ohne Feld)
 
-### NodeInfo (Frontend)
+### NodeInfo (SensorHub Frontend)
 
 - `port` -> `nodes.node_id`
 - `alias` -> `nodes.name`
@@ -84,7 +148,7 @@ Persistenz liegt in `data/sensorhub.db` (SQLite) und Fotos in `data/photos/`.
 - `lastSeenAt` -> `nodes.last_seen_at`
 - `lastError` -> `nodes.last_error`
 
-### CameraDevice (Frontend)
+### CameraDevice (SensorHub Frontend)
 
 - `cameraId` -> `cameras.camera_id`
 - `deviceId` -> `cameras.camera_id`
