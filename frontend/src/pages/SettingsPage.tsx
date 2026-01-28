@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   deleteCamera,
@@ -106,11 +106,6 @@ const SettingsPage = ({ onBack }: Props) => {
     });
   }, [cameraDevices]);
 
-  const activeNodes = useMemo(
-    () => nodes.filter((node) => node.port !== "DUMMY"),
-    [nodes]
-  );
-
   const updateNodeState = (
     port: string,
     patch: Partial<(typeof nodeState)[string]>
@@ -205,7 +200,7 @@ const SettingsPage = ({ onBack }: Props) => {
   };
 
   const selectedNode = selectedPort
-    ? activeNodes.find((item) => item.port === selectedPort) ?? null
+    ? nodes.find((item) => item.port === selectedPort) ?? null
     : null;
   const selectedState = selectedPort ? nodeState[selectedPort] ?? null : null;
   const selectedAlias =
@@ -270,9 +265,9 @@ const SettingsPage = ({ onBack }: Props) => {
       <div className="settings-stack">
         <div className="section">
           <div className="section-title">Nodes</div>
-          {activeNodes.length === 0 && <div className="hint">No nodes found.</div>}
+          {nodes.length === 0 && <div className="hint">No nodes found.</div>}
           <div className="device-grid is-compact">
-            {activeNodes.map((node) => (
+            {nodes.map((node) => (
               <button
                 key={node.port}
                 type="button"

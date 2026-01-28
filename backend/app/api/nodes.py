@@ -75,10 +75,6 @@ def delete_node_route(port: str) -> dict:
 
 @router.post("/{port}/command")
 def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
-    if port == "DUMMY":
-        if payload.t == "get_all":
-            return get_dummy_reading(port)
-        return {"ok": True, "note": "dummy node"}
     client = get_node_client(port)
     if not client:
         raise HTTPException(status_code=503, detail="node offline")
@@ -122,8 +118,6 @@ def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
 
 @router.patch("/{port}")
 def patch_node(port: str, payload: NodeUpdate) -> dict:
-    if port == "DUMMY":
-        raise HTTPException(status_code=409, detail="cannot rename dummy node")
     node = get_node(port)
     if not node:
         raise HTTPException(status_code=404, detail="node not found")

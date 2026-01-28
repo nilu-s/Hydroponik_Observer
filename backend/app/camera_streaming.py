@@ -67,7 +67,7 @@ async def capture_photo_now(setup_id: str, reason: str = "manual") -> dict:
 
 
 async def photo_capture_loop() -> None:
-    last_capture_by_setup: dict[str, int] = {}
+    next_due_by_setup: dict[str, int] = {}
     while True:
         now_ms = int(time.time() * 1000)
         for setup in list_setups():
@@ -75,15 +75,30 @@ async def photo_capture_loop() -> None:
             camera_id = setup.get("camera_id")
             if not camera_id:
                 continue
-            interval_minutes = setup.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES
-            last_capture_ts = last_capture_by_setup.get(setup_id, 0)
-            if (now_ms - last_capture_ts) < interval_minutes * 60 * 1000:
+            interval_minutes = setup.get("photo_interval_sec")
+            if interval_minutes is None:
+                interval_minutes = DEFAULT_PHOTO_INTERVAL_MINUTES
+            if interval_minutes <= 0:
+                continue
+            interval_ms = int(interval_minutes * 60 * 1000)
+            if setup_id not in next_due_by_setup:
+                next_due_by_setup[setup_id] = now_ms + interval_ms
+                continue
+            next_due = next_due_by_setup.get(setup_id, 0)
+            if now_ms < next_due:
                 continue
             try:
                 await capture_photo_now(setup_id, reason="interval")
-                last_capture_by_setup[setup_id] = now_ms
             except HTTPException:
+                next_due = next_due + interval_ms
+                if next_due <= now_ms:
+                    next_due = now_ms + interval_ms
+                next_due_by_setup[setup_id] = next_due
                 continue
+            next_due = next_due + interval_ms
+            if next_due <= now_ms:
+                next_due = now_ms + interval_ms
+            next_due_by_setup[setup_id] = next_due
         await asyncio.sleep(1)
 
 

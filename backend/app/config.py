@@ -44,7 +44,7 @@ SERIAL_OPEN_DELAY_SEC = 0.4
 SERIAL_HANDSHAKE_TIMEOUT_SEC = 4.0
 LIVE_MIN_FPS = 5
 LIVE_MAX_FPS = 10
-LIVE_POLL_INTERVAL_SEC = 5
+LIVE_POLL_INTERVAL_SEC = 2
 
 def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)

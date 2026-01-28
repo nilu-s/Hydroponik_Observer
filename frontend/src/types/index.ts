@@ -10,7 +10,7 @@ export type Setup = {
 export type NodeInfo = {
   port: string;
   alias?: string;
-  kind: "real" | "dummy";
+  kind: "real";
   status: "online" | "offline" | "unknown";
   fw?: string;
   mode?: "real" | "debug";

@@ -219,8 +219,6 @@ def mark_nodes_offline(active_ids: set[str]) -> None:
         rows = conn.execute("SELECT node_id FROM nodes").fetchall()
         for row in rows:
             node_id = row["node_id"]
-            if node_id == "DUMMY":
-                continue
             if node_id not in active_ids:
                 conn.execute(
                     "UPDATE nodes SET status = ?, last_error = ? WHERE node_id = ?",

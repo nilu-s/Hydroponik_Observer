@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import platform
 from typing import Any
 
 from fastapi import FastAPI, WebSocket
@@ -32,12 +33,30 @@ app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 live_manager = LiveManager()
 register_ws_manager(live_manager)
 
+def _set_windows_keep_awake(enable: bool) -> None:
+    if platform.system() != "Windows":
+        return
+    try:
+        import ctypes
+
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        ES_AWAYMODE_REQUIRED = 0x00000040
+        if enable:
+            flags = ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED
+        else:
+            flags = ES_CONTINUOUS
+        ctypes.windll.kernel32.SetThreadExecutionState(flags)
+    except Exception:
+        pass
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
     ensure_dirs()
     init_db()
     register_live_manager(live_manager)
+    _set_windows_keep_awake(True)
     app.state.node_task = asyncio.create_task(node_discovery_loop())
     app.state.readings_task = asyncio.create_task(readings_capture_loop())
     app.state.camera_task = asyncio.create_task(camera_discovery_loop())
@@ -72,6 +91,7 @@ async def on_startup() -> None:
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
+    _set_windows_keep_awake(False)
     for task_name in ("node_task", "readings_task", "camera_task", "photo_task"):
         task = getattr(app.state, task_name, None)
         if task:
