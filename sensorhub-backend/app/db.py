@@ -321,21 +321,6 @@ def delete_calibration(node_id: str) -> None:
         conn.execute("DELETE FROM calibration WHERE node_id = ?", (node_id,))
 
 
-def migrate_node_id(old_id: str, new_id: str) -> None:
-    if not old_id or not new_id or old_id == new_id:
-        return
-    with _get_conn() as conn:
-        conn.execute("UPDATE setups SET node_id = ? WHERE node_id = ?", (new_id, old_id))
-        conn.execute("UPDATE calibration SET node_id = ? WHERE node_id = ?", (new_id, old_id))
-        conn.execute("UPDATE readings SET node_id = ? WHERE node_id = ?", (new_id, old_id))
-        existing_new = conn.execute(
-            "SELECT node_id FROM nodes WHERE node_id = ?",
-            (new_id,),
-        ).fetchone()
-        if existing_new:
-            conn.execute("DELETE FROM nodes WHERE node_id = ?", (old_id,))
-        else:
-            conn.execute("UPDATE nodes SET node_id = ? WHERE node_id = ?", (new_id, old_id))
 
 
 def insert_reading(

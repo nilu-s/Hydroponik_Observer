@@ -83,23 +83,19 @@ const SettingsPage = ({ onBack }: Props) => {
     setNodeState((prev) => {
       const next = { ...prev };
       nodes.forEach((node) => {
-        const nodeKey = node.nodeId ?? node.port ?? "";
-        if (!nodeKey) {
-          return;
-        }
-        if (!next[nodeKey]) {
-          next[nodeKey] = {
-            name: node.alias ?? node.port ?? node.nodeId ?? nodeKey,
+        if (!next[node.nodeId]) {
+          next[node.nodeId] = {
+            name: node.alias ?? node.nodeId,
             mode: node.mode ?? "real",
             status: "",
             isBusy: false,
           };
         } else if (
           node.alias &&
-          (next[nodeKey].name === node.nodeId || next[nodeKey].name === node.port)
+          next[node.nodeId].name === node.nodeId
         ) {
-          next[nodeKey] = {
-            ...next[nodeKey],
+          next[node.nodeId] = {
+            ...next[node.nodeId],
             name: node.alias,
           };
         }
@@ -223,13 +219,11 @@ const SettingsPage = ({ onBack }: Props) => {
   };
 
   const selectedNode = selectedNodeId
-    ? nodes.find((item) => (item.nodeId ?? item.port) === selectedNodeId) ?? null
+    ? nodes.find((item) => item.nodeId === selectedNodeId) ?? null
     : null;
   const selectedState = selectedNodeId ? nodeState[selectedNodeId] ?? null : null;
   const selectedAlias =
-    selectedNode && selectedState
-      ? selectedNode.alias ?? selectedNode.port ?? selectedNode.nodeId
-      : null;
+    selectedNode && selectedState ? selectedNode.alias ?? selectedNode.nodeId : null;
   const selectedCamera = selectedCameraId
     ? cameraDevices.find((item) => item.cameraId === selectedCameraId) ?? null
     : null;
@@ -293,23 +287,17 @@ const SettingsPage = ({ onBack }: Props) => {
           <div className="section-title">Nodes</div>
           {nodes.length === 0 && <div className="hint">No nodes found.</div>}
           <div className="device-grid is-compact">
-            {nodes
-              .map((node) => ({
-                ...node,
-                key: node.nodeId ?? node.port ?? "",
-              }))
-              .filter((node) => node.key)
-              .map((node) => (
+            {nodes.map((node) => (
               <button
-                key={node.key}
+                key={node.nodeId}
                 type="button"
                 className={`tile device-tile is-compact${
-                  selectedNodeId === node.key ? " is-active" : ""
+                  selectedNodeId === node.nodeId ? " is-active" : ""
                 } node-tile`}
-                onClick={() => setSelectedNodeId(node.key)}
+                onClick={() => setSelectedNodeId(node.nodeId)}
               >
                 <div className="device-title">
-                  {node.key} · {node.alias ?? node.port ?? node.nodeId ?? node.key}
+                  {node.nodeId} · {node.alias ?? node.nodeId}
                 </div>
                 <div className="hint">
                   {node.status} · {node.mode ?? "unknown"}

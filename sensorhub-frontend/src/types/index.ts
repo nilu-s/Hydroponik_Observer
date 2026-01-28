@@ -2,15 +2,13 @@ export type Setup = {
   setupId: string;
   name: string;
   nodeId: string | null;
-  port?: string | null;
   cameraPort: string | null;
   valueIntervalMinutes: number;
   photoIntervalMinutes: number;
 };
 
 export type NodeInfo = {
-  nodeId?: string;
-  port?: string | null;
+  nodeId: string;
   alias?: string;
   kind: "real";
   status: "online" | "offline" | "unknown";

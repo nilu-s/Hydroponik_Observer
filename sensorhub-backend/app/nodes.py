@@ -30,7 +30,6 @@ from .db import (
     get_node,
     get_setup,
     mark_nodes_offline,
-    migrate_node_id,
     upsert_node,
     update_node_mode,
 )
@@ -195,7 +194,7 @@ def _parse_node_hello(data: dict[str, Any], expected_type: str) -> NodeHello:
         raise RuntimeError("unexpected hello type")
     uid = data.get("uid")
     if not isinstance(uid, str) or not uid:
-        uid = None
+        raise RuntimeError("missing uid")
     return NodeHello(
         uid=uid,
         fw=data.get("fw"),
@@ -274,11 +273,6 @@ def _scan_nodes_once() -> set[str]:
                 NODE_PORTS[node_key] = port
             NODE_CLIENTS[node_key].hello = hello
             existing_node = get_node(node_key)
-            legacy_node = get_node(port) if port != node_key else None
-            if legacy_node:
-                migrate_node_id(port, node_key)
-                if not existing_node:
-                    existing_node = legacy_node
             name_hint = None if existing_node and existing_node.get("name") else node_key
             upsert_node(
                 node_id=node_key,

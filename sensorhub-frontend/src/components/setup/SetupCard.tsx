@@ -49,36 +49,30 @@ const SetupCard = ({
     setName(setup.name);
   }, [setup.name]);
 
-  const setupNodeId = setup.nodeId ?? setup.port ?? null;
+  const setupNodeId = setup.nodeId ?? null;
   const nodeLabel = useMemo(() => {
     if (!setupNodeId) {
       return "None";
     }
-    const node = nodes.find(
-      (item) => (item.nodeId ?? item.port ?? "") === setupNodeId
-    );
+    const node = nodes.find((item) => item.nodeId === setupNodeId);
     if (!node) {
       return setupNodeId;
     }
-    const label = node.alias ?? node.port ?? node.nodeId ?? setupNodeId;
+    const label = node.alias ?? node.nodeId ?? setupNodeId;
     return label;
   }, [nodes, setupNodeId]);
   const nodeMode = useMemo(() => {
     if (!setupNodeId) {
       return "unknown";
     }
-    const node = nodes.find(
-      (item) => (item.nodeId ?? item.port ?? "") === setupNodeId
-    );
+    const node = nodes.find((item) => item.nodeId === setupNodeId);
     return node?.mode ?? "unknown";
   }, [nodes, setupNodeId]);
   const nodeStatus = useMemo(() => {
     if (!setupNodeId) {
       return null;
     }
-    const node = nodes.find(
-      (item) => (item.nodeId ?? item.port ?? "") === setupNodeId
-    );
+    const node = nodes.find((item) => item.nodeId === setupNodeId);
     return node?.status ?? "unknown";
   }, [nodes, setupNodeId]);
 
@@ -134,11 +128,7 @@ const SetupCard = ({
 
   const isNodeShared =
     !!setupNodeId &&
-    setups.some(
-      (item) =>
-        item.setupId !== setup.setupId &&
-        (item.nodeId ?? item.port) === setupNodeId
-    );
+    setups.some((item) => item.setupId !== setup.setupId && item.nodeId === setupNodeId);
   const isCameraShared =
     !!setup.cameraPort &&
     setups.some(
@@ -147,9 +137,8 @@ const SetupCard = ({
   const sharedNodeIds = useMemo(() => {
     const map = new Map<string, number>();
     setups.forEach((item) => {
-      const nodeKey = item.nodeId ?? item.port;
-      if (nodeKey) {
-        map.set(nodeKey, (map.get(nodeKey) ?? 0) + 1);
+      if (item.nodeId) {
+        map.set(item.nodeId, (map.get(item.nodeId) ?? 0) + 1);
       }
     });
     return new Set(

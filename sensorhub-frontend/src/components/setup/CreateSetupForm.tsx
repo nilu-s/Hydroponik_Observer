@@ -27,10 +27,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const assignedNodes = useMemo(
-    () =>
-      new Set(
-        setups.map((setup) => setup.nodeId ?? setup.port).filter(Boolean)
-      ),
+    () => new Set(setups.map((setup) => setup.nodeId).filter(Boolean)),
     [setups]
   );
   const assignedCameras = useMemo(
@@ -133,18 +130,12 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                   onChange={(event) => setNodeId(event.target.value)}
                 >
                   <option value="">None</option>
-                  {nodes
-                    .map((node) => ({
-                      ...node,
-                      key: node.nodeId ?? node.port ?? "",
-                    }))
-                    .filter((node) => node.key)
-                    .map((node) => (
-                      <option key={node.key} value={node.key}>
-                        {node.alias ?? node.port ?? node.nodeId ?? node.key}
-                        {assignedNodes.has(node.key) ? " • shared" : ""}
-                      </option>
-                    ))}
+                  {nodes.map((node) => (
+                    <option key={node.nodeId} value={node.nodeId}>
+                      {node.alias ?? node.nodeId}
+                      {assignedNodes.has(node.nodeId) ? " • shared" : ""}
+                    </option>
+                  ))}
                 </select>
                 {isNodeShared && (
                   <div className="hint">Warning: This node is already assigned.</div>

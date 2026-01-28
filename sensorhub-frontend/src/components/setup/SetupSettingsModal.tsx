@@ -88,22 +88,16 @@ const SetupSettingsModal: FC<Props> = ({
                 onChange={(event) => onNodeChange(event.target.value || null)}
               >
                 <option value="">None</option>
-                {nodes
-                  .map((node) => ({
-                    ...node,
-                    key: node.nodeId ?? node.port ?? "",
-                  }))
-                  .filter((node) => node.key)
-                  .map((node) => (
-                    <option
-                      key={node.key}
-                      value={node.key}
-                      className={sharedNodeIds.has(node.key) ? "option-shared" : ""}
-                    >
-                      {node.key} · {(node.alias ?? node.port ?? node.nodeId ?? node.key)} ({node.kind})
-                      {sharedNodeIds.has(node.key) ? " • shared" : ""}
-                    </option>
-                  ))}
+                {nodes.map((node) => (
+                  <option
+                    key={node.nodeId}
+                    value={node.nodeId}
+                    className={sharedNodeIds.has(node.nodeId) ? "option-shared" : ""}
+                  >
+                    {node.nodeId} · {(node.alias ?? node.nodeId)} ({node.kind})
+                    {sharedNodeIds.has(node.nodeId) ? " • shared" : ""}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="setup-row">
