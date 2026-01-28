@@ -10,14 +10,15 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .config import (
-    CAMERA_SCAN_INTERVAL_SEC,
     CAMERA_WORKER_CANDIDATES,
     CAMERA_WORKER_PATH,
     CAMERA_WORKER_TIMEOUT_SEC,
+    POLL_INTERVALS,
     log_event,
 )
 from .db import list_cameras, mark_cameras_offline, upsert_camera
 from .realtime_updates import LiveManager
+from .scheduler import run_periodic
 
 CAMERA_CACHE: dict[str, dict[str, Any]] = {}
 LIVE_MANAGER: Optional[LiveManager] = None
@@ -49,7 +50,9 @@ async def broadcast_camera_devices() -> None:
 
 async def camera_discovery_loop() -> None:
     last_payload: Optional[str] = None
-    while True:
+
+    async def work() -> None:
+        nonlocal last_payload
         devices = await asyncio.to_thread(_scan_camera_devices)
         active_ids: set[str] = set()
         for device in devices:
@@ -71,7 +74,8 @@ async def camera_discovery_loop() -> None:
             if payload_json != last_payload:
                 await LIVE_MANAGER.broadcast_all(payload)
                 last_payload = payload_json
-        await asyncio.sleep(max(1, int(CAMERA_SCAN_INTERVAL_SEC)))
+
+    await run_periodic("camera_discovery", lambda: POLL_INTERVALS.camera_scan_sec, work, min_sleep_sec=1)
 
 
 def _refresh_cache(devices: list[dict[str, Any]]) -> None:
@@ -108,13 +112,13 @@ def _scan_camera_devices() -> list[dict[str, Any]]:
     )
     if not devices:
         log_event("cameras.scan_empty", source="worker")
-        print("cameras.scan_empty: source=worker")
     else:
-        print(
-            "cameras.scan_result:"
-            f" total={len(devices)}"
-            f" usb={usb_count}"
-            f" internal={internal_count}"
+        log_event(
+            "cameras.scan_summary",
+            source="worker",
+            total=len(devices),
+            usb=usb_count,
+            internal=internal_count,
         )
     return devices
 
@@ -173,26 +177,21 @@ def _resolve_worker_command() -> Optional[list[str]]:
     if CAMERA_WORKER_PATH:
         path = Path(CAMERA_WORKER_PATH)
         if path.exists():
-            print(f"cameras.worker_path: {path}")
+            log_event("cameras.worker_path", path=str(path))
             return [str(path)]
         log_event("cameras.worker_missing", path=str(path))
-        print(f"cameras.worker_missing: path={path}")
         return None
     for candidate in CAMERA_WORKER_CANDIDATES:
         if candidate.exists():
-            print(f"cameras.worker_found: path={candidate}")
+            log_event("cameras.worker_found", path=str(candidate))
             return [str(candidate)]
         alt = candidate.with_name("camera_worker.exe")
         if alt.exists():
-            print(f"cameras.worker_found: path={alt}")
+            log_event("cameras.worker_found", path=str(alt))
             return [str(alt)]
     log_event(
         "cameras.worker_missing",
         path=";".join(str(candidate) for candidate in CAMERA_WORKER_CANDIDATES),
-    )
-    print(
-        "cameras.worker_missing:"
-        f" path={';'.join(str(candidate) for candidate in CAMERA_WORKER_CANDIDATES)}"
     )
     return None
 
@@ -215,15 +214,9 @@ def _run_worker(command: list[str]) -> str:
             code=result.returncode,
             stderr=result.stderr.strip(),
         )
-        print(
-            "cameras.worker_error:"
-            f" code={result.returncode}"
-            f" stderr={result.stderr.strip()}"
-        )
         return ""
     if result.stderr.strip():
         log_event("cameras.worker_stderr", stderr=result.stderr.strip())
-        print(f"cameras.worker_stderr: {result.stderr.strip()}")
     return result.stdout.strip()
 
 

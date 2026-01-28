@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-from pathlib import Path
 from typing import Any, Iterable
 
 from fastapi import Depends, HTTPException, WebSocket, status
@@ -9,31 +7,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from .config import JWT_ALGORITHM, JWT_AUDIENCE, JWT_ISSUER, JWT_SECRET
+from .utils.paths import resolve_under, validate_identifier
 
 ROLE_VIEWER = "viewer"
 ROLE_OPERATOR = "operator"
 ROLE_ADMIN = "admin"
 
 _bearer = HTTPBearer(auto_error=False)
-_id_pattern = re.compile(r"^[A-Za-z0-9_-]+$")
-
-
-def validate_identifier(value: str, label: str) -> str:
-    if not value or not _id_pattern.match(value):
-        raise HTTPException(status_code=400, detail=f"invalid {label}")
-    return value
-
-
-def resolve_under(base: Path, *parts: str) -> Path:
-    resolved = base.joinpath(*parts).resolve()
-    base_resolved = base.resolve()
-    try:
-        resolved.relative_to(base_resolved)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="invalid path") from exc
-    return resolved
-
-
 def _decode_jwt(token: str) -> dict[str, Any]:
     if not JWT_SECRET:
         raise HTTPException(status_code=500, detail="auth not configured")

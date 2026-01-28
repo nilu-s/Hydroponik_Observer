@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import csv
-import io
 import re
 import shutil
 import time
 import tempfile
 import zipfile
-from datetime import datetime
 from pathlib import Path
-from typing import Iterable
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -31,6 +27,8 @@ from ..db import (
 from ..models import SetupCreate, SetupUpdate
 from ..nodes import fetch_setup_reading
 from ..security import ROLE_ADMIN, ROLE_OPERATOR, resolve_under, require_roles, validate_identifier
+from ..utils.csv_export import write_csv_to_zip_stream
+from ..utils.datetime_utils import iter_readings_with_iso
 
 router = APIRouter()
 
@@ -169,7 +167,7 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
         for setup in setups:
             setup_id = setup["setup_id"]
             setup_name = setup.get("name") or setup_id
-            readings = _iter_readings_with_iso(setup_id)
+            readings = iter_readings_with_iso(iter_readings(setup_id))
             write_csv_to_zip_stream(
                 zf,
                 f"setups/{setup_id}/readings.csv",
@@ -184,31 +182,6 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
         filename="sensorhub-export.zip",
         media_type="application/zip",
     )
-
-
-def write_csv_to_zip_stream(
-    zf: zipfile.ZipFile,
-    name: str,
-    rows: Iterable[dict],
-    headers: list[str],
-) -> None:
-    with zf.open(name, "w") as handle:
-        with io.TextIOWrapper(handle, encoding="utf-8", newline="") as output:
-            writer = csv.DictWriter(output, fieldnames=headers)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: row.get(key) for key in headers})
-
-
-def _iter_readings_with_iso(setup_id: str) -> Iterable[dict]:
-    for reading in iter_readings(setup_id):
-        ts = reading.get("ts")
-        reading["ts_iso"] = (
-            datetime.fromtimestamp(ts / 1000).isoformat(sep=" ", timespec="seconds")
-            if isinstance(ts, int)
-            else ""
-        )
-        yield reading
 
 
 def delete_setup_assets(setup_id: str) -> int:

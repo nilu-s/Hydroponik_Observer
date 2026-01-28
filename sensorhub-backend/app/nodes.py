@@ -14,13 +14,14 @@ from fastapi import HTTPException
 from .config import (
     NODE_RETRY_ATTEMPTS,
     NODE_RETRY_BACKOFF_BASE_SEC,
-    NODE_SCAN_INTERVAL_SEC,
+    POLL_INTERVALS,
     SERIAL_BAUDRATE,
     SERIAL_HANDSHAKE_TIMEOUT_SEC,
     SERIAL_OPEN_DELAY_SEC,
     SERIAL_TIMEOUT_SEC,
     log_event,
 )
+from .scheduler import run_periodic
 from .db import (
     _now_ms,
     encode_cap_json,
@@ -256,7 +257,6 @@ def _scan_nodes_once() -> set[str]:
                 port=port,
                 node_key=node_key,
             )
-            print(f"nodes.scan_success: port={port} key={node_key}")
             active_ids.add(node_key)
             existing = NODE_CLIENTS.get(node_key)
             if not existing or NODE_PORTS.get(node_key) != port:
@@ -293,15 +293,15 @@ def _scan_nodes_once() -> set[str]:
                 )
         except Exception as exc:
             log_event("nodes.scan_failed", port=port, error=str(exc))
-            print(f"nodes.scan_failed: port={port} error={exc}")
     mark_nodes_offline(active_ids)
     return active_ids
 
 
 async def node_discovery_loop() -> None:
-    while True:
+    async def work() -> None:
         await asyncio.to_thread(_scan_nodes_once)
-        await asyncio.sleep(NODE_SCAN_INTERVAL_SEC)
+
+    await run_periodic("node_discovery", lambda: POLL_INTERVALS.node_scan_sec, work)
 
 
 

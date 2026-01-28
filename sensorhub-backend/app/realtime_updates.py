@@ -7,9 +7,10 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, WebSocket
 
-from .config import DEFAULT_VALUE_INTERVAL_MINUTES, LIVE_POLL_INTERVAL_SEC
+from .config import DEFAULT_VALUE_INTERVAL_MINUTES, POLL_INTERVALS
 from .db import get_setup, insert_reading, list_setups
 from .nodes import fetch_node_reading
+from .scheduler import run_periodic
 
 
 async def _fetch_live_reading(setup_id: str, node_id: Optional[str]) -> Optional[dict[str, Any]]:
@@ -86,7 +87,7 @@ class LiveManager:
                 await asyncio.sleep(2)
                 continue
             node_id = setup.get("node_id")
-            poll_interval_sec = max(1, int(LIVE_POLL_INTERVAL_SEC))
+            poll_interval_sec = max(1, int(POLL_INTERVALS.live_poll_sec))
             reading = await _fetch_live_reading(setup_id, node_id)
             if reading:
                 await self._broadcast(setup_id, _build_reading_payload(setup_id, reading))
@@ -115,14 +116,15 @@ class LiveManager:
 
 async def readings_capture_loop() -> None:
     next_due_by_setup: dict[str, int] = {}
-    while True:
+
+    async def work() -> None:
         now_ms = int(time.time() * 1000)
         for setup in list_setups():
             setup_id = setup["setup_id"]
             node_id = setup.get("node_id")
             if not node_id:
                 continue
-            interval_minutes = setup.get("value_interval_sec")
+            interval_minutes = setup.get("value_interval_minutes")
             if interval_minutes is None:
                 interval_minutes = DEFAULT_VALUE_INTERVAL_MINUTES
             if interval_minutes <= 0:
@@ -150,4 +152,5 @@ async def readings_capture_loop() -> None:
             if next_due <= now_ms:
                 next_due = now_ms + interval_ms
             next_due_by_setup[setup_id] = next_due
-        await asyncio.sleep(1)
+
+    await run_periodic("readings_capture", lambda: 1, work, min_sleep_sec=1)

@@ -23,6 +23,7 @@ from .realtime_updates import LiveManager, readings_capture_loop, register_live_
 from .nodes import node_discovery_loop
 from .camera_devices import camera_discovery_loop, register_live_manager
 from .camera_streaming import photo_capture_loop, snapshot_camera, stream_camera
+from .scheduler import LoopRegistry
 from .security import ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER, authenticate_ws, require_roles
 
 
@@ -82,10 +83,11 @@ async def on_startup() -> None:
     init_db()
     register_live_manager(live_manager)
     _set_windows_keep_awake(True)
-    app.state.node_task = asyncio.create_task(node_discovery_loop())
-    app.state.readings_task = asyncio.create_task(readings_capture_loop())
-    app.state.camera_task = asyncio.create_task(camera_discovery_loop())
-    app.state.photo_task = asyncio.create_task(photo_capture_loop())
+    app.state.loop_registry = LoopRegistry()
+    app.state.node_task = app.state.loop_registry.start("node_discovery", node_discovery_loop())
+    app.state.readings_task = app.state.loop_registry.start("readings_capture", readings_capture_loop())
+    app.state.camera_task = app.state.loop_registry.start("camera_discovery", camera_discovery_loop())
+    app.state.photo_task = app.state.loop_registry.start("photo_capture", photo_capture_loop())
     setups = list_setups()
     loop_setups = [
         {
@@ -116,10 +118,9 @@ async def on_startup() -> None:
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
     _set_windows_keep_awake(False)
-    for task_name in ("node_task", "readings_task", "camera_task", "photo_task"):
-        task = getattr(app.state, task_name, None)
-        if task:
-            task.cancel()
+    loop_registry = getattr(app.state, "loop_registry", None)
+    if loop_registry:
+        loop_registry.stop_all()
     close_connections()
 
 

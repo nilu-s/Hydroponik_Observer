@@ -92,6 +92,8 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 
 - `POST /admin/reset` -> DB und Runtime reset
   - Header: `X-Reset-Token: <ADMIN_RESET_TOKEN>`
+- `GET /admin/health` -> Health-Status und Worker-Metriken
+  - Response: `{ ok, ts, workers: { workerCount, subscriberCount, workers: [...] }, setups: { count }, cameras: { count } }`
 
 ## WebSocket Live
 

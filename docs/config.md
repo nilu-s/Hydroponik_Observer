@@ -14,7 +14,7 @@ Typische Parameter:
 - Reset-Token fuer Admin-Reset (ENV `ADMIN_RESET_TOKEN`)
 - Pfad/Location fuer den Camera Worker
 - Worker-Limits fuer Kamera-Streams (ENV `CAMERA_WORKER_MAX_PER_DEVICE`, `CAMERA_WORKER_MAX_TOTAL`)
-- Poll-Intervall fuer Foto-Loop (ENV `PHOTO_CAPTURE_POLL_INTERVAL_SEC`)
+- Poll-Intervalle (ENV `NODE_SCAN_INTERVAL_SEC`, `CAMERA_SCAN_INTERVAL_SEC`, `LIVE_POLL_INTERVAL_SEC`, `PHOTO_CAPTURE_POLL_INTERVAL_SEC`)
 - JWT Konfiguration (ENV `JWT_SECRET`, optional `JWT_ISSUER`, `JWT_AUDIENCE`)
 - CORS/CSRF (ENV `CORS_ALLOW_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `CSRF_TOKEN`)
 

@@ -22,6 +22,7 @@ const Timeline = ({ setup }: Props) => {
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [sliderTs, setSliderTs] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pair, setPair] = useState<{ readingTs: number | null; photoTs: number | null }>({
     readingTs: null,
     photoTs: null,
@@ -31,6 +32,7 @@ const Timeline = ({ setup }: Props) => {
   useEffect(() => {
     let mounted = true;
     const load = () => {
+      setError(null);
       getHistory(setup.setupId, 200)
         .then((data) => {
           const payload = data as HistoryResponse;
@@ -61,7 +63,10 @@ const Timeline = ({ setup }: Props) => {
             photoTs: photos[photos.length - 1]?.ts ?? null,
           });
         })
-        .catch(() => null);
+        .catch(() => {
+          if (!mounted) return;
+          setError("Unable to load history data. Please try again.");
+        });
     };
     load();
     const interval = window.setInterval(load, 10000);
@@ -417,7 +422,8 @@ const Timeline = ({ setup }: Props) => {
       </div>
 
       <div className="timeline-scroll">
-        {events.length === 0 && <div className="hint">No stored readings or photos yet.</div>}
+        {error && <div className="hint">{error}</div>}
+        {!error && events.length === 0 && <div className="hint">No stored readings or photos yet.</div>}
         {events.length > 0 && (
           <div className="timeline-axis-wrap">
             <div className="timeline-axis-line" />

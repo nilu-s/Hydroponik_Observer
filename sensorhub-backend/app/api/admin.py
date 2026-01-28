@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 import shutil
 
 from ..config import ADMIN_RESET_TOKEN, PHOTOS_DIR, ensure_dirs, log_event
 from ..db import init_db
-from ..camera_devices import reset_runtime as reset_camera_runtime
+from ..camera_devices import list_camera_devices, reset_runtime as reset_camera_runtime
 from ..camera_streaming import reset_runtime as reset_camera_streaming
+from ..camera_worker_manager import get_camera_worker_manager
 from ..nodes import reset_runtime as reset_node_runtime
 from ..realtime_updates import broadcast_system_reset
 from ..security import ROLE_ADMIN, require_roles
+from ..db import list_setups
 
 router = APIRouter(prefix="/admin")
 
@@ -31,3 +35,16 @@ async def reset_db(token: str = Header("", alias="X-Reset-Token")) -> dict:
     log_event("db.reset")
     await broadcast_system_reset("db-reset")
     return {"ok": True}
+
+
+@router.get("/health", dependencies=[Depends(require_roles(ROLE_ADMIN))])
+async def get_health() -> dict:
+    manager = get_camera_worker_manager()
+    worker_health = manager.get_health()
+    return {
+        "ok": True,
+        "ts": int(time.time() * 1000),
+        "workers": worker_health,
+        "setups": {"count": len(list_setups())},
+        "cameras": {"count": len(list_camera_devices())},
+    }
