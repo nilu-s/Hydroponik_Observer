@@ -92,8 +92,8 @@ erDiagram
     string name
     string node_id
     string camera_id
-    int value_interval_sec
-    int photo_interval_sec
+    int value_interval_minutes
+    int photo_interval_minutes
     int created_at
   }
 

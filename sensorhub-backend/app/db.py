@@ -80,17 +80,18 @@ def init_db(reset: bool = False) -> None:
 
 
 def reset_db_contents() -> None:
-    init_db()
-    with _get_conn() as conn:
-        conn.execute("DELETE FROM readings")
-        conn.execute("DELETE FROM setups")
-        conn.execute("DELETE FROM nodes")
-        conn.execute("DELETE FROM cameras")
-        conn.execute("DELETE FROM calibration")
+    close_connections()
+    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+        conn.execute("PRAGMA foreign_keys=OFF;")
+        for table in ("readings", "setups", "nodes", "cameras", "calibration"):
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
         try:
             conn.execute("DELETE FROM sqlite_sequence")
         except sqlite3.OperationalError:
             pass
+        conn.execute("PRAGMA foreign_keys=ON;")
+    close_connections()
+    init_db()
 
 
 @contextmanager

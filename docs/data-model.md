@@ -16,8 +16,8 @@ erDiagram
     string name
     string node_id
     string camera_id
-    int value_interval_sec
-    int photo_interval_sec
+    int value_interval_minutes
+    int photo_interval_minutes
     int created_at
   }
 
@@ -74,8 +74,8 @@ erDiagram
 - `name`
 - `node_id` (nullable)
 - `camera_id` (nullable)
-- `value_interval_sec` (Legacy-Name, gespeichert in Minuten)
-- `photo_interval_sec` (Legacy-Name, gespeichert in Minuten)
+- `value_interval_minutes` (Intervall in Minuten)
+- `photo_interval_minutes` (Intervall in Minuten)
 - `created_at`
 
 ### nodes
@@ -132,8 +132,8 @@ erDiagram
 - `setupId` -> `setups.setup_id`
 - `port` -> `setups.node_id`
 - `cameraPort` -> `setups.camera_id`
-- `valueIntervalMinutes` -> `setups.value_interval_sec` (Minutenwert)
-- `photoIntervalMinutes` -> `setups.photo_interval_sec` (Minutenwert)
+- `valueIntervalMinutes` -> `setups.value_interval_minutes` (Minutenwert)
+- `photoIntervalMinutes` -> `setups.photo_interval_minutes` (Minutenwert)
 - `createdAt` -> `setups.created_at` (API-Feld, Frontend-Typ aktuell ohne Feld)
 
 ### NodeInfo (SensorHub Frontend)

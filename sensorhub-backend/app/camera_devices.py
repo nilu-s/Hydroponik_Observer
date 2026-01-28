@@ -75,7 +75,12 @@ async def camera_discovery_loop() -> None:
                 await LIVE_MANAGER.broadcast_all(payload)
                 last_payload = payload_json
 
-    await run_periodic("camera_discovery", lambda: POLL_INTERVALS.camera_scan_sec, work, min_sleep_sec=1)
+    await run_periodic(
+        "camera_discovery",
+        lambda: POLL_INTERVALS.camera_scan_sec,
+        work,
+        min_sleep_sec=1,
+    )
 
 
 def _refresh_cache(devices: list[dict[str, Any]]) -> None:
