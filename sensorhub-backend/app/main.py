@@ -49,7 +49,7 @@ async def csrf_protect(request, call_next):
                 return JSONResponse(status_code=403, content={"detail": "csrf origin forbidden"})
         else:
             header_token = request.headers.get("x-csrf-token", "")
-            if not CSRF_TOKEN or header_token != CSRF_TOKEN:
+            if CSRF_TOKEN and header_token != CSRF_TOKEN:
                 return JSONResponse(status_code=403, content={"detail": "csrf token required"})
     return await call_next(request)
 

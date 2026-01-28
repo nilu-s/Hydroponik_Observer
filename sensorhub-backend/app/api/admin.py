@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 import shutil
 
 from ..config import ADMIN_RESET_TOKEN, PHOTOS_DIR, ensure_dirs, log_event
-from ..db import init_db
+from ..db import reset_db_contents
 from ..camera_devices import list_camera_devices, reset_runtime as reset_camera_runtime
 from ..camera_streaming import reset_runtime as reset_camera_streaming
 from ..camera_worker_manager import get_camera_worker_manager
@@ -21,11 +21,9 @@ router = APIRouter(prefix="/admin")
 
 @router.post("/reset", dependencies=[Depends(require_roles(ROLE_ADMIN))])
 async def reset_db(token: str = Header("", alias="X-Reset-Token")) -> dict:
-    if not ADMIN_RESET_TOKEN:
-        raise HTTPException(status_code=500, detail="reset token not configured")
-    if token != ADMIN_RESET_TOKEN:
+    if ADMIN_RESET_TOKEN and token != ADMIN_RESET_TOKEN:
         raise HTTPException(status_code=401, detail="unauthorized")
-    init_db(reset=True)
+    reset_db_contents()
     reset_node_runtime()
     reset_camera_runtime()
     reset_camera_streaming()

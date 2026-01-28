@@ -1,6 +1,15 @@
+const DEV_PORTS = new Set(["3000", "8081", "19006"]);
+
 const resolveBackendPort = (port: string) => {
   const isVitePort = !!port && /^517\d$/.test(port);
-  return port ? (isVitePort ? "8000" : port) : "8000";
+  const isDevPort = DEV_PORTS.has(port);
+  if (!port) {
+    return "8000";
+  }
+  if (isVitePort || isDevPort) {
+    return "8000";
+  }
+  return port;
 };
 
 const resolveHost = (hostname: string) => (hostname === "0.0.0.0" ? "localhost" : hostname);

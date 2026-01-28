@@ -32,9 +32,8 @@ Der Token wird ueber die Umgebungsvariable `ADMIN_RESET_TOKEN` gesetzt.
 
 ## Auth
 
-Alle API-Routen benoetigen ein JWT im Header `Authorization: Bearer <JWT>`.
-Der JWT muss eine `role` oder `roles`-Claim enthalten. Erlaubte Rollen:
-`viewer`, `operator`, `admin`.
+Die Authentifizierung ist derzeit deaktiviert; alle API-Routen und WebSockets
+akzeptieren Anfragen ohne JWT.
 
 ## CORS/CSRF
 

@@ -25,12 +25,6 @@ const SettingsPage = ({ onBack }: Props) => {
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([]);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [authToken, setAuthToken] = useState<string>(
-    () => localStorage.getItem("sensorhub.jwt") ?? ""
-  );
-  const [csrfToken, setCsrfToken] = useState<string>(
-    () => localStorage.getItem("sensorhub.csrf") ?? ""
-  );
   const [selectedPort, setSelectedPort] = useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [nodeState, setNodeState] = useState<
@@ -168,21 +162,6 @@ const SettingsPage = ({ onBack }: Props) => {
     }
   };
 
-  const handleSaveAuth = () => {
-    const trimmedAuth = authToken.trim();
-    if (trimmedAuth) {
-      localStorage.setItem("sensorhub.jwt", trimmedAuth);
-    } else {
-      localStorage.removeItem("sensorhub.jwt");
-    }
-    const trimmedCsrf = csrfToken.trim();
-    if (trimmedCsrf) {
-      localStorage.setItem("sensorhub.csrf", trimmedCsrf);
-    } else {
-      localStorage.removeItem("sensorhub.csrf");
-    }
-    loadData();
-  };
 
   const handleDeleteNode = async (port: string) => {
     if (!window.confirm(`Delete node ${port}? This also deletes its photos.`)) {
@@ -301,34 +280,6 @@ const SettingsPage = ({ onBack }: Props) => {
       </header>
 
       <div className="settings-stack">
-        <div className="section">
-          <div className="section-title">Authentication</div>
-          <div className="row grid-two">
-            <div className="field">
-              <label className="label">JWT token</label>
-              <input
-                className="input"
-                value={authToken}
-                onChange={(event) => setAuthToken(event.target.value)}
-                placeholder="Paste JWT token"
-              />
-            </div>
-            <div className="field">
-              <label className="label">CSRF token (optional)</label>
-              <input
-                className="input"
-                value={csrfToken}
-                onChange={(event) => setCsrfToken(event.target.value)}
-                placeholder="X-CSRF-Token"
-              />
-            </div>
-          </div>
-          <div className="row compact">
-            <button className="button" onClick={handleSaveAuth}>
-              Save auth
-            </button>
-          </div>
-        </div>
         <div className="section">
           <div className="section-title">Nodes</div>
           {nodes.length === 0 && <div className="hint">No nodes found.</div>}

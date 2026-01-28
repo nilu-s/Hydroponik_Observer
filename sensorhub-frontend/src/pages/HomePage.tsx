@@ -30,6 +30,7 @@ const HomePage = ({ onOpenSettings }: Props) => {
     "connecting"
   );
   const [pendingDelete, setPendingDelete] = useState<Setup | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const wsRef = useRef<LiveWsClient | null>(null);
   const subscribedIdsRef = useRef<Set<string>>(new Set());
@@ -49,14 +50,20 @@ const HomePage = ({ onOpenSettings }: Props) => {
   };
 
   const loadBaseData = async () => {
-    const [setupsData, nodesData, cameraDeviceData] = await Promise.all([
-      getSetups(),
-      getNodes(),
-      getCameraDevices(),
-    ]);
-    setSetups(setupsData);
-    setNodes(nodesData);
-    setCameraDevices(cameraDeviceData);
+    try {
+      const [setupsData, nodesData, cameraDeviceData] = await Promise.all([
+        getSetups(),
+        getNodes(),
+        getCameraDevices(),
+      ]);
+      setSetups(setupsData);
+      setNodes(nodesData);
+      setCameraDevices(cameraDeviceData);
+      setLoadError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load data.";
+      setLoadError(message);
+    }
   };
 
   useEffect(() => {
@@ -207,6 +214,7 @@ const HomePage = ({ onOpenSettings }: Props) => {
         <div>
           <h1>SensorHub Frontend</h1>
           <p className="subtitle">Dashboard</p>
+          {loadError && <p className="hint error">{loadError}</p>}
         </div>
         <div className="header-actions">
           <div className="status">

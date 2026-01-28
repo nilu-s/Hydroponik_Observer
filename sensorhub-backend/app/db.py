@@ -19,8 +19,8 @@ def _now_ms() -> int:
 
 def init_db(reset: bool = False) -> None:
     ensure_dirs()
-    if DB_PATH.exists() and reset:
-        DB_PATH.unlink(missing_ok=True)
+    if reset:
+        _delete_db_files()
     with _get_conn() as conn:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys=ON;")
@@ -30,6 +30,7 @@ def init_db(reset: bool = False) -> None:
                 setup_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 node_id TEXT NULL,
+                camera_id TEXT NULL,
                 value_interval_minutes INTEGER NOT NULL,
                 photo_interval_minutes INTEGER NOT NULL,
                 created_at INTEGER NOT NULL
@@ -76,7 +77,20 @@ def init_db(reset: bool = False) -> None:
             );
             """
         )
-        _ensure_column(conn, "setups", "camera_id", "TEXT NULL")
+
+
+def reset_db_contents() -> None:
+    init_db()
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM readings")
+        conn.execute("DELETE FROM setups")
+        conn.execute("DELETE FROM nodes")
+        conn.execute("DELETE FROM cameras")
+        conn.execute("DELETE FROM calibration")
+        try:
+            conn.execute("DELETE FROM sqlite_sequence")
+        except sqlite3.OperationalError:
+            pass
 
 
 @contextmanager
@@ -104,8 +118,28 @@ def close_connections() -> None:
         conn.close()
     finally:
         _thread_local.conn = None
-    finally:
-        conn.close()
+
+
+def _delete_db_files() -> None:
+    close_connections()
+    candidates = [
+        DB_PATH,
+        DB_PATH.with_suffix(DB_PATH.suffix + "-wal"),
+        DB_PATH.with_suffix(DB_PATH.suffix + "-shm"),
+    ]
+    for attempt in range(5):
+        pending = []
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except PermissionError:
+                pending.append(path)
+        if not pending:
+            return
+        time.sleep(0.2 * (attempt + 1))
+        close_connections()
 
 
 def list_setups() -> list[dict[str, Any]]:
@@ -356,14 +390,6 @@ def get_calibration(node_id: str) -> Optional[dict[str, Any]]:
             (node_id,),
         ).fetchone()
     return dict(row) if row else None
-
-
-def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_def: str) -> None:
-    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    existing = {row["name"] for row in rows}
-    if column in existing:
-        return
-    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
 
 
 def list_cameras() -> list[dict[str, Any]]:

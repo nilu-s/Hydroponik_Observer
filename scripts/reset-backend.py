@@ -9,11 +9,8 @@ import urllib.error
 import urllib.request
 
 
-def _require_value(name: str, value: str) -> str:
-    value = value.strip()
-    if not value:
-        raise SystemExit(f"{name} is not set.")
-    return value
+def _optional_value(value: str) -> str:
+    return value.strip()
 
 
 def main() -> int:
@@ -41,16 +38,16 @@ def main() -> int:
     args = parser.parse_args()
 
     backend_url = args.backend_url.rstrip("/")
-    reset_token = _require_value("ADMIN_RESET_TOKEN", args.reset_token)
-    jwt = _require_value("SENSORHUB_JWT", args.jwt)
-    csrf_token = args.csrf_token.strip()
+    reset_token = _optional_value(args.reset_token)
+    jwt = _optional_value(args.jwt)
+    csrf_token = _optional_value(args.csrf_token)
 
     url = f"{backend_url}/api/admin/reset"
-    headers = {
-        "Authorization": f"Bearer {jwt}",
-        "X-Reset-Token": reset_token,
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    if reset_token:
+        headers["X-Reset-Token"] = reset_token
     if csrf_token:
         headers["X-CSRF-Token"] = csrf_token
 
