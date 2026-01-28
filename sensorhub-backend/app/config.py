@@ -41,10 +41,6 @@ class PollIntervals:
 
 
 ADMIN_RESET_TOKEN = os.getenv("ADMIN_RESET_TOKEN", "")
-JWT_SECRET = os.getenv("JWT_SECRET", "")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_ISSUER = os.getenv("JWT_ISSUER", "")
-JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "")
 CSRF_TOKEN = os.getenv("CSRF_TOKEN", "")
 CORS_ALLOW_ORIGINS = _split_env_list(os.getenv("CORS_ALLOW_ORIGINS", "")) or DEFAULT_CORS_ORIGINS
 CSRF_TRUSTED_ORIGINS = _split_env_list(os.getenv("CSRF_TRUSTED_ORIGINS", "")) or CORS_ALLOW_ORIGINS

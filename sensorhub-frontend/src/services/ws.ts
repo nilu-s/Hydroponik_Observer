@@ -25,9 +25,7 @@ export class LiveWsClient {
       return;
     }
     this.onStatus("connecting");
-    const token = localStorage.getItem("sensorhub.jwt");
-    const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
-    this.socket = new WebSocket(`${getBackendWsBaseUrl()}/api/live${suffix}`);
+    this.socket = new WebSocket(`${getBackendWsBaseUrl()}/api/live`);
 
     this.socket.onopen = () => {
       this.reconnectAttempt = 0;

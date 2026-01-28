@@ -16,7 +16,7 @@ from .config import (
 )
 from .camera_worker_manager import get_camera_worker_manager
 from .db import get_camera, get_setup, list_setups
-from .security import resolve_under, validate_identifier
+from .utils.paths import resolve_under, validate_identifier
 from .scheduler import run_periodic
 
 

@@ -40,16 +40,11 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
 
   const cameraOptions = cameraDevices;
 
-  const normalizeCameraId = (cameraIdValue: string) => {
-    return cameraIdValue.replace(/^fallback:/i, "");
-  };
-
   const shortCameraId = (cameraIdValue: string) => {
     if (!cameraIdValue) {
       return "";
     }
-    const compact = normalizeCameraId(cameraIdValue).replace(/^@device:pnp:/i, "");
-    return compact.length > 32 ? `...${compact.slice(-32)}` : compact;
+    return cameraIdValue.length > 32 ? `...${cameraIdValue.slice(-32)}` : cameraIdValue;
   };
 
   const shortPnpId = (pnpDeviceId?: string) => {
@@ -153,7 +148,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                     <option key={camera.cameraId} value={camera.cameraId}>
                       {(camera.alias ||
                         camera.friendlyName ||
-                        normalizeCameraId(camera.cameraId)) +
+                        camera.cameraId) +
                         (camera.cameraId
                           ? ` · ${shortCameraId(camera.cameraId)}`
                           : camera.pnpDeviceId

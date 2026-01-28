@@ -26,11 +26,6 @@ def main() -> int:
         help="Admin reset token (env: ADMIN_RESET_TOKEN).",
     )
     parser.add_argument(
-        "--jwt",
-        default=os.getenv("SENSORHUB_JWT", ""),
-        help="JWT token (env: SENSORHUB_JWT).",
-    )
-    parser.add_argument(
         "--csrf-token",
         default=os.getenv("CSRF_TOKEN", ""),
         help="Optional CSRF token (env: CSRF_TOKEN).",
@@ -39,13 +34,10 @@ def main() -> int:
 
     backend_url = args.backend_url.rstrip("/")
     reset_token = _optional_value(args.reset_token)
-    jwt = _optional_value(args.jwt)
     csrf_token = _optional_value(args.csrf_token)
 
     url = f"{backend_url}/api/admin/reset"
     headers = {"Content-Type": "application/json"}
-    if jwt:
-        headers["Authorization"] = f"Bearer {jwt}"
     if reset_token:
         headers["X-Reset-Token"] = reset_token
     if csrf_token:

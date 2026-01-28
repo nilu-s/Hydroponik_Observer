@@ -43,10 +43,6 @@ const SetupSettingsModal: FC<Props> = ({
     return null;
   }
 
-  const normalizeCameraId = (cameraIdValue: string) => {
-    return cameraIdValue.replace(/^fallback:/i, "");
-  };
-
   return (
     <div className="modal-overlay">
       <div className="wizard compact-modal">
@@ -116,9 +112,7 @@ const SetupSettingsModal: FC<Props> = ({
                     value={camera.cameraId}
                     className={sharedCameraIds.has(camera.cameraId) ? "option-shared" : ""}
                   >
-                    {(camera.alias ||
-                      camera.friendlyName ||
-                      normalizeCameraId(camera.cameraId)) +
+                    {(camera.alias || camera.friendlyName || camera.cameraId) +
                       (camera.status === "offline" ? " • offline" : "") +
                       (sharedCameraIds.has(camera.cameraId) ? " • shared" : "")}
                   </option>

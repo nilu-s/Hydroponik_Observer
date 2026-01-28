@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
 from ..camera_streaming import capture_photo_now, stop_workers_for_device
@@ -26,7 +26,7 @@ from ..db import (
 )
 from ..models import SetupCreate, SetupUpdate
 from ..nodes import fetch_setup_reading
-from ..security import ROLE_ADMIN, ROLE_OPERATOR, resolve_under, require_roles, validate_identifier
+from ..utils.paths import resolve_under, validate_identifier
 from ..utils.csv_export import write_csv_to_zip_stream
 from ..utils.datetime_utils import iter_readings_with_iso
 
@@ -51,7 +51,7 @@ def get_setups() -> list[dict]:
     ]
 
 
-@router.post("/setups", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
+@router.post("/setups")
 def post_setup(payload: SetupCreate) -> dict:
     row = create_setup(payload.name)
     return {
@@ -67,7 +67,7 @@ def post_setup(payload: SetupCreate) -> dict:
     }
 
 
-@router.patch("/setups/{setup_id}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
+@router.patch("/setups/{setup_id}")
 def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
     updates = payload.model_dump(exclude_unset=True)
     if "cameraPort" in updates:
@@ -91,7 +91,7 @@ def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
     }
 
 
-@router.delete("/setups/{setup_id}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
+@router.delete("/setups/{setup_id}")
 def delete_setup_route(setup_id: str) -> dict:
     setup = get_setup(setup_id)
     if not setup:
@@ -117,10 +117,7 @@ async def get_reading(setup_id: str) -> dict:
     return reading
 
 
-@router.post(
-    "/setups/{setup_id}/capture-reading",
-    dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))],
-)
+@router.post("/setups/{setup_id}/capture-reading")
 async def capture_reading(setup_id: str) -> dict:
     node_id, reading = await fetch_setup_reading(setup_id)
     ts = int(reading.get("ts") or time.time() * 1000)
@@ -137,10 +134,7 @@ async def capture_reading(setup_id: str) -> dict:
     return reading
 
 
-@router.post(
-    "/setups/{setup_id}/capture-photo",
-    dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))],
-)
+@router.post("/setups/{setup_id}/capture-photo")
 async def capture_photo(setup_id: str) -> dict:
     return await capture_photo_now(setup_id)
 
@@ -155,7 +149,7 @@ def get_history(setup_id: str, limit: int = 200) -> dict:
     return {"readings": readings, "photos": photos}
 
 
-@router.get("/export/all", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
+@router.get("/export/all")
 def export_all(background_tasks: BackgroundTasks) -> FileResponse:
     setups = list_setups()
 
@@ -204,21 +198,17 @@ def _list_photos(setup_id: str, camera_id: str | None) -> list[dict]:
         rf"^{re.escape(safe_setup_id)}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}\.jpg$",
         re.IGNORECASE,
     )
-    pattern_old = re.compile(rf"^{re.escape(safe_setup_id)}_(\d+)\.jpg$", re.IGNORECASE)
     photos: list[dict] = []
     for entry in folder.iterdir():
         if not entry.is_file():
             continue
-        match = pattern_new.match(entry.name) or pattern_old.match(entry.name)
+        match = pattern_new.match(entry.name)
         if not match:
             continue
-        if match.re is pattern_old:
-            ts = int(match.group(1))
-        else:
-            try:
-                ts = int(entry.stat().st_mtime * 1000)
-            except OSError:
-                ts = 0
+        try:
+            ts = int(entry.stat().st_mtime * 1000)
+        except OSError:
+            ts = 0
         photos.append(
             {
                 "id": ts,

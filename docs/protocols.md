@@ -16,6 +16,23 @@ Wichtige Nachrichtentypen:
 - `set_sim`: Setzen von Simulationswerten
 - `set_calib` / `set_calib_ack`: Kalibrierungsdaten übertragen
 
+### set_sim (Serial)
+Die Node erwartet die Felder `ph`, `ec`, `temp` direkt im Payload.
+
+Beispiel:
+```json
+{"t":"set_sim","ph":6.5,"ec":1.7,"temp":22.3}
+```
+
+### set_calib (Serial)
+Kalibrierungsdaten werden als `payload` Objekt gesendet. Die Node liest `payload`
+und quittiert mit `set_calib_ack`.
+
+Beispiel:
+```json
+{"t":"set_calib","version":2,"payload":{"ph":{"m":1.0,"b":0.0}}}
+```
+
 ## UID-basierter Handshake (hello / hello_ack)
 Der Handshake identifiziert Nodes über eine stabile UID und übergibt Capabilities sowie Kalibrierungs-Hash. Das Diagramm zeigt die minimalen Schritte vom ersten Kontakt bis zum akzeptierten Node-Client.
 
@@ -99,9 +116,8 @@ Client:
 Server:
 - `{ "t": "reading", "setupId": "...", "ts": 123, "ph": 6.8, "ec": 1.4, "temp": 22.1, "status": ["ok"] }`
 - `{ "t": "cameraDevices", "devices": [ ... ] }`
-- `{ "t": "device", "setupId": "...", "node": "...", "camera": "..." }`
 - `{ "t": "reset", "reason": "..." }`
-- `{ "t": "error", "msg": "..." }`
+- `{ "t": "error", "setupId"?: "...", "msg": "..." }`
 
 ## Camera Worker Protocol (list/device streaming)
 Der Camera Worker ist ein separater Prozess. Er liefert Frames als Binärformat mit Header und JPEG-Payload. `--list` gibt eine JSON-Liste der Devices aus, `--device <id>` streamt Frames.

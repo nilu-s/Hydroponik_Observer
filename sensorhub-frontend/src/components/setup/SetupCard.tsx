@@ -34,10 +34,6 @@ const SetupCard = ({
   onCaptureReading,
   onCapturePhoto,
 }: Props) => {
-  const normalizeCameraId = (cameraIdValue: string) => {
-    return cameraIdValue.replace(/^fallback:/i, "");
-  };
-
   const [name, setName] = useState(setup.name);
   const [isSavingName, setIsSavingName] = useState(false);
   const [isCapturingReading, setIsCapturingReading] = useState(false);
@@ -170,7 +166,7 @@ const SetupCard = ({
           {
             cameraId: setup.cameraPort,
             deviceId: "",
-            friendlyName: `Unbekannt (${normalizeCameraId(setup.cameraPort)})`,
+            friendlyName: `Unbekannt (${setup.cameraPort})`,
             status: "offline" as const,
           },
           ...cameraDevices,
@@ -183,9 +179,9 @@ const SetupCard = ({
     }
     const device = cameraOptions.find((camera) => camera.cameraId === setup.cameraPort);
     if (!device) {
-      return normalizeCameraId(setup.cameraPort);
+      return setup.cameraPort;
     }
-    return device.alias || device.friendlyName || normalizeCameraId(device.cameraId);
+    return device.alias || device.friendlyName || device.cameraId;
   }, [cameraOptions, setup.cameraPort]);
   const cameraStatus = useMemo(() => {
     if (!setup.cameraPort) {

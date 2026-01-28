@@ -221,9 +221,6 @@ def _resolve_worker_command() -> Optional[list[str]]:
     for candidate in CAMERA_WORKER_CANDIDATES:
         if candidate.exists():
             return [str(candidate)]
-        alt = candidate.with_name("camera_worker.exe")
-        if alt.exists():
-            return [str(alt)]
     log_event(
         "camera.worker_missing",
         path=";".join(str(candidate) for candidate in CAMERA_WORKER_CANDIDATES),

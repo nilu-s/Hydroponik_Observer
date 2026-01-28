@@ -18,10 +18,6 @@ type Props = {
 };
 
 const SettingsPage = ({ onBack }: Props) => {
-  const normalizeCameraId = (cameraIdValue: string) => {
-    return cameraIdValue.replace(/^fallback:/i, "");
-  };
-
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([]);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -111,7 +107,7 @@ const SettingsPage = ({ onBack }: Props) => {
         if (!next[camera.cameraId]) {
           next[camera.cameraId] = {
             alias:
-              camera.alias ?? camera.friendlyName ?? normalizeCameraId(camera.cameraId),
+              camera.alias ?? camera.friendlyName ?? camera.cameraId,
           };
         } else if (camera.alias && next[camera.cameraId].alias === camera.cameraId) {
           next[camera.cameraId] = {
@@ -231,7 +227,7 @@ const SettingsPage = ({ onBack }: Props) => {
   const selectedCameraAlias = selectedCamera
     ? selectedCamera.alias ??
       selectedCamera.friendlyName ??
-      normalizeCameraId(selectedCamera.cameraId)
+      selectedCamera.cameraId
     : null;
 
   const handleCloseModal = async () => {

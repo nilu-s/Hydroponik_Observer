@@ -190,10 +190,6 @@ def _resolve_worker_command() -> Optional[list[str]]:
         if candidate.exists():
             log_event("cameras.worker_found", path=str(candidate))
             return [str(candidate)]
-        alt = candidate.with_name("camera_worker.exe")
-        if alt.exists():
-            log_event("cameras.worker_found", path=str(alt))
-            return [str(alt)]
     log_event(
         "cameras.worker_missing",
         path=";".join(str(candidate) for candidate in CAMERA_WORKER_CANDIDATES),

@@ -4,9 +4,13 @@ Diese Dokumentation strukturiert den aktuellen Systemstand für die Bachelorarbe
 
 ## Inhalt
 - [Architektur](./architecture.md)
+- [REST API](./api.md)
+- [Konfiguration](./config.md)
 - [Protokolle](./protocols.md)
 - [Datenmodell](./data-model.md)
 - [Laufzeitverhalten](./runtime-behavior.md)
 - [Designentscheidungen](./design-decisions.md)
 - [Grenzen und Ausblick](./limitations-and-future-work.md)
 - [Glossar](./glossary.md)
+- [Troubleshooting](./troubleshooting.md)
+- [FAQ](./faq.md)

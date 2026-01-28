@@ -4,7 +4,7 @@ import asyncio
 import platform
 from typing import Any
 
-from fastapi import Depends, FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,6 @@ from .nodes import node_discovery_loop
 from .camera_devices import camera_discovery_loop, register_live_manager
 from .camera_streaming import photo_capture_loop, snapshot_camera, stream_camera
 from .scheduler import LoopRegistry
-from .security import ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER, authenticate_ws, require_roles
 
 
 app = FastAPI(title="SensorHub Backend")
@@ -126,9 +125,6 @@ async def on_shutdown() -> None:
 
 @app.websocket("/api/live")
 async def live_ws(ws: WebSocket) -> None:
-    claims = await authenticate_ws(ws, {ROLE_VIEWER, ROLE_OPERATOR, ROLE_ADMIN})
-    if not claims:
-        return
     await ws.accept()
     try:
         while True:
@@ -145,16 +141,10 @@ async def live_ws(ws: WebSocket) -> None:
         await live_manager.remove_ws(ws)
 
 
-@app.get(
-    "/api/setups/{setup_id}/camera/stream",
-    dependencies=[Depends(require_roles(ROLE_VIEWER, ROLE_OPERATOR, ROLE_ADMIN))],
-)
+@app.get("/api/setups/{setup_id}/camera/stream")
 async def camera_stream(setup_id: str) -> Any:
     return await stream_camera(setup_id)
 
-@app.get(
-    "/api/setups/{setup_id}/camera/snapshot",
-    dependencies=[Depends(require_roles(ROLE_VIEWER, ROLE_OPERATOR, ROLE_ADMIN))],
-)
+@app.get("/api/setups/{setup_id}/camera/snapshot")
 async def camera_snapshot(setup_id: str) -> Any:
     return await snapshot_camera(setup_id)

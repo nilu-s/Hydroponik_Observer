@@ -1,14 +1,6 @@
 import { getBackendBaseUrl } from "./backend-url";
 import { CameraDevice, NodeInfo, Reading, Setup } from "../types";
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem("sensorhub.jwt");
-  if (!token) {
-    return {};
-  }
-  return { Authorization: `Bearer ${token}` };
-};
-
 const getCsrfHeaders = (): Record<string, string> => {
   const token = localStorage.getItem("sensorhub.csrf");
   if (!token) {
@@ -18,7 +10,6 @@ const getCsrfHeaders = (): Record<string, string> => {
 };
 
 const buildHeaders = (headers?: HeadersInit): HeadersInit => ({
-  ...getAuthHeaders(),
   ...getCsrfHeaders(),
   ...(headers ?? {}),
 });

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 
 import shutil
 
@@ -13,16 +13,19 @@ from ..camera_streaming import reset_runtime as reset_camera_streaming
 from ..camera_worker_manager import get_camera_worker_manager
 from ..nodes import reset_runtime as reset_node_runtime
 from ..realtime_updates import broadcast_system_reset
-from ..security import ROLE_ADMIN, require_roles
 from ..db import list_setups
 
 router = APIRouter(prefix="/admin")
 
 
-@router.post("/reset", dependencies=[Depends(require_roles(ROLE_ADMIN))])
-async def reset_db(token: str = Header("", alias="X-Reset-Token")) -> dict:
-    if ADMIN_RESET_TOKEN and token != ADMIN_RESET_TOKEN:
-        raise HTTPException(status_code=401, detail="unauthorized")
+@router.post("/reset")
+async def reset_db(token: str | None = Header(None, alias="X-Reset-Token")) -> dict:
+    if not ADMIN_RESET_TOKEN:
+        raise HTTPException(status_code=403, detail="admin reset disabled: set ADMIN_RESET_TOKEN")
+    if not token:
+        raise HTTPException(status_code=401, detail="reset token required")
+    if token != ADMIN_RESET_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid reset token")
     reset_db_contents()
     reset_node_runtime()
     reset_camera_runtime()
@@ -35,7 +38,7 @@ async def reset_db(token: str = Header("", alias="X-Reset-Token")) -> dict:
     return {"ok": True}
 
 
-@router.get("/health", dependencies=[Depends(require_roles(ROLE_ADMIN))])
+@router.get("/health")
 async def get_health() -> dict:
     manager = get_camera_worker_manager()
     worker_health = manager.get_health()
