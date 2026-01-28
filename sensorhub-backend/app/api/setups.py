@@ -9,8 +9,9 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from typing import Iterable
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from ..camera_streaming import capture_photo_now, stop_workers_for_device
@@ -22,13 +23,14 @@ from ..db import (
     get_camera,
     get_setup,
     insert_reading,
-    list_all_readings,
+    iter_readings,
     list_readings,
     list_setups,
     update_setup,
 )
 from ..models import SetupCreate, SetupUpdate
 from ..nodes import fetch_setup_reading
+from ..security import ROLE_ADMIN, ROLE_OPERATOR, resolve_under, require_roles, validate_identifier
 
 router = APIRouter()
 
@@ -41,15 +43,17 @@ def get_setups() -> list[dict]:
             "name": row["name"],
             "port": row["node_id"],
             "cameraPort": row.get("camera_id"),
-            "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
-            "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
+            "valueIntervalMinutes": row.get("value_interval_minutes")
+            or DEFAULT_VALUE_INTERVAL_MINUTES,
+            "photoIntervalMinutes": row.get("photo_interval_minutes")
+            or DEFAULT_PHOTO_INTERVAL_MINUTES,
             "createdAt": row["created_at"],
         }
         for row in list_setups()
     ]
 
 
-@router.post("/setups")
+@router.post("/setups", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 def post_setup(payload: SetupCreate) -> dict:
     row = create_setup(payload.name)
     return {
@@ -57,13 +61,15 @@ def post_setup(payload: SetupCreate) -> dict:
         "name": row["name"],
         "port": row["node_id"],
         "cameraPort": row.get("camera_id"),
-        "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
-        "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
+        "valueIntervalMinutes": row.get("value_interval_minutes")
+        or DEFAULT_VALUE_INTERVAL_MINUTES,
+        "photoIntervalMinutes": row.get("photo_interval_minutes")
+        or DEFAULT_PHOTO_INTERVAL_MINUTES,
         "createdAt": row["created_at"],
     }
 
 
-@router.patch("/setups/{setup_id}")
+@router.patch("/setups/{setup_id}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
     updates = payload.model_dump(exclude_unset=True)
     if "cameraPort" in updates:
@@ -79,13 +85,15 @@ def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
         "name": row["name"],
         "port": row["node_id"],
         "cameraPort": row.get("camera_id"),
-        "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
-        "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
+        "valueIntervalMinutes": row.get("value_interval_minutes")
+        or DEFAULT_VALUE_INTERVAL_MINUTES,
+        "photoIntervalMinutes": row.get("photo_interval_minutes")
+        or DEFAULT_PHOTO_INTERVAL_MINUTES,
         "createdAt": row["created_at"],
     }
 
 
-@router.delete("/setups/{setup_id}")
+@router.delete("/setups/{setup_id}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
 def delete_setup_route(setup_id: str) -> dict:
     setup = get_setup(setup_id)
     if not setup:
@@ -111,7 +119,10 @@ async def get_reading(setup_id: str) -> dict:
     return reading
 
 
-@router.post("/setups/{setup_id}/capture-reading")
+@router.post(
+    "/setups/{setup_id}/capture-reading",
+    dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))],
+)
 async def capture_reading(setup_id: str) -> dict:
     node_id, reading = await fetch_setup_reading(setup_id)
     ts = int(reading.get("ts") or time.time() * 1000)
@@ -128,7 +139,10 @@ async def capture_reading(setup_id: str) -> dict:
     return reading
 
 
-@router.post("/setups/{setup_id}/capture-photo")
+@router.post(
+    "/setups/{setup_id}/capture-photo",
+    dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))],
+)
 async def capture_photo(setup_id: str) -> dict:
     return await capture_photo_now(setup_id)
 
@@ -143,7 +157,7 @@ def get_history(setup_id: str, limit: int = 200) -> dict:
     return {"readings": readings, "photos": photos}
 
 
-@router.get("/export/all")
+@router.get("/export/all", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 def export_all(background_tasks: BackgroundTasks) -> FileResponse:
     setups = list_setups()
 
@@ -155,15 +169,8 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
         for setup in setups:
             setup_id = setup["setup_id"]
             setup_name = setup.get("name") or setup_id
-            readings = list_all_readings(setup_id)
-            for reading in readings:
-                ts = reading.get("ts")
-                reading["ts_iso"] = (
-                    datetime.fromtimestamp(ts / 1000).isoformat(sep=" ", timespec="seconds")
-                    if isinstance(ts, int)
-                    else ""
-                )
-            write_csv_to_zip(
+            readings = _iter_readings_with_iso(setup_id)
+            write_csv_to_zip_stream(
                 zf,
                 f"setups/{setup_id}/readings.csv",
                 readings,
@@ -179,23 +186,35 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
     )
 
 
-def write_csv_to_zip(
+def write_csv_to_zip_stream(
     zf: zipfile.ZipFile,
     name: str,
-    rows: list[dict],
+    rows: Iterable[dict],
     headers: list[str],
 ) -> None:
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=headers)
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({key: row.get(key) for key in headers})
-    zf.writestr(name, output.getvalue())
+    with zf.open(name, "w") as handle:
+        with io.TextIOWrapper(handle, encoding="utf-8", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=headers)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: row.get(key) for key in headers})
+
+
+def _iter_readings_with_iso(setup_id: str) -> Iterable[dict]:
+    for reading in iter_readings(setup_id):
+        ts = reading.get("ts")
+        reading["ts_iso"] = (
+            datetime.fromtimestamp(ts / 1000).isoformat(sep=" ", timespec="seconds")
+            if isinstance(ts, int)
+            else ""
+        )
+        yield reading
 
 
 def delete_setup_assets(setup_id: str) -> int:
     delete_readings_by_setup(setup_id)
-    photos_dir = PHOTOS_DIR / setup_id
+    safe_setup_id = validate_identifier(setup_id, "setup_id")
+    photos_dir = resolve_under(PHOTOS_DIR, safe_setup_id)
     deleted = 0
     if photos_dir.exists():
         deleted = sum(1 for entry in photos_dir.iterdir() if entry.is_file())
@@ -204,14 +223,15 @@ def delete_setup_assets(setup_id: str) -> int:
 
 
 def _list_photos(setup_id: str, camera_id: str | None) -> list[dict]:
-    folder = PHOTOS_DIR / setup_id
+    safe_setup_id = validate_identifier(setup_id, "setup_id")
+    folder = resolve_under(PHOTOS_DIR, safe_setup_id)
     if not folder.exists():
         return []
     pattern_new = re.compile(
-        rf"^{re.escape(setup_id)}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}\.jpg$",
+        rf"^{re.escape(safe_setup_id)}_\d{{4}}-\d{{2}}-\d{{2}}_\d{{2}}-\d{{2}}-\d{{2}}\.jpg$",
         re.IGNORECASE,
     )
-    pattern_old = re.compile(rf"^{re.escape(setup_id)}_(\d+)\.jpg$", re.IGNORECASE)
+    pattern_old = re.compile(rf"^{re.escape(safe_setup_id)}_(\d+)\.jpg$", re.IGNORECASE)
     photos: list[dict] = []
     for entry in folder.iterdir():
         if not entry.is_file():
@@ -229,10 +249,10 @@ def _list_photos(setup_id: str, camera_id: str | None) -> list[dict]:
         photos.append(
             {
                 "id": ts,
-                "setup_id": setup_id,
+                "setup_id": safe_setup_id,
                 "camera_id": camera_id or "",
                 "ts": ts,
-                "path": f"/data/photos/{setup_id}/{entry.name}",
+                "path": f"/data/photos/{safe_setup_id}/{entry.name}",
             }
         )
     return sorted(photos, key=lambda item: item["ts"])

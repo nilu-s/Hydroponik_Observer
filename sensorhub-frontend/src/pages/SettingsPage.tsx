@@ -24,6 +24,13 @@ const SettingsPage = ({ onBack }: Props) => {
 
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([]);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string>(
+    () => localStorage.getItem("sensorhub.jwt") ?? ""
+  );
+  const [csrfToken, setCsrfToken] = useState<string>(
+    () => localStorage.getItem("sensorhub.csrf") ?? ""
+  );
   const [selectedPort, setSelectedPort] = useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [nodeState, setNodeState] = useState<
@@ -47,9 +54,15 @@ const SettingsPage = ({ onBack }: Props) => {
   >({});
 
   const loadData = async () => {
-    const [nodeData, cameraData] = await Promise.all([getNodes(), getCameraDevices()]);
-    setNodes(nodeData);
-    setCameraDevices(cameraData);
+    try {
+      const [nodeData, cameraData] = await Promise.all([getNodes(), getCameraDevices()]);
+      setNodes(nodeData);
+      setCameraDevices(cameraData);
+      setRefreshError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to refresh data.";
+      setRefreshError(message);
+    }
   };
 
   useEffect(() => {
@@ -58,8 +71,16 @@ const SettingsPage = ({ onBack }: Props) => {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      getNodes().then(setNodes).catch(() => null);
-      getCameraDevices().then(setCameraDevices).catch(() => null);
+      Promise.all([getNodes(), getCameraDevices()])
+        .then(([nodeData, cameraData]) => {
+          setNodes(nodeData);
+          setCameraDevices(cameraData);
+          setRefreshError(null);
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "Failed to refresh data.";
+          setRefreshError(message);
+        });
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -145,6 +166,22 @@ const SettingsPage = ({ onBack }: Props) => {
       const message = error instanceof Error ? error.message : "Export failed";
       alert(message);
     }
+  };
+
+  const handleSaveAuth = () => {
+    const trimmedAuth = authToken.trim();
+    if (trimmedAuth) {
+      localStorage.setItem("sensorhub.jwt", trimmedAuth);
+    } else {
+      localStorage.removeItem("sensorhub.jwt");
+    }
+    const trimmedCsrf = csrfToken.trim();
+    if (trimmedCsrf) {
+      localStorage.setItem("sensorhub.csrf", trimmedCsrf);
+    } else {
+      localStorage.removeItem("sensorhub.csrf");
+    }
+    loadData();
   };
 
   const handleDeleteNode = async (port: string) => {
@@ -251,6 +288,7 @@ const SettingsPage = ({ onBack }: Props) => {
         <div>
           <h1>Settings</h1>
           <p className="subtitle">Global node and camera configuration</p>
+          {refreshError && <p className="hint error">{refreshError}</p>}
         </div>
         <div className="header-actions">
           <button className="button" onClick={onBack}>
@@ -263,6 +301,34 @@ const SettingsPage = ({ onBack }: Props) => {
       </header>
 
       <div className="settings-stack">
+        <div className="section">
+          <div className="section-title">Authentication</div>
+          <div className="row grid-two">
+            <div className="field">
+              <label className="label">JWT token</label>
+              <input
+                className="input"
+                value={authToken}
+                onChange={(event) => setAuthToken(event.target.value)}
+                placeholder="Paste JWT token"
+              />
+            </div>
+            <div className="field">
+              <label className="label">CSRF token (optional)</label>
+              <input
+                className="input"
+                value={csrfToken}
+                onChange={(event) => setCsrfToken(event.target.value)}
+                placeholder="X-CSRF-Token"
+              />
+            </div>
+          </div>
+          <div className="row compact">
+            <button className="button" onClick={handleSaveAuth}>
+              Save auth
+            </button>
+          </div>
+        </div>
         <div className="section">
           <div className="section-title">Nodes</div>
           {nodes.length === 0 && <div className="hint">No nodes found.</div>}

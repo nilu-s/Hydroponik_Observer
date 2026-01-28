@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..config import log_event
 from ..db import (
@@ -17,6 +17,7 @@ from ..db import (
 from ..models import NodeCommandRequest, NodeUpdate
 from ..nodes import get_node_client, list_serial_ports, remove_node_client
 from .setups import delete_setup_assets
+from ..security import ROLE_ADMIN, ROLE_OPERATOR, require_roles
 
 router = APIRouter(prefix="/nodes")
 
@@ -45,7 +46,7 @@ def get_serial_ports() -> list[dict[str, str]]:
     return list_serial_ports()
 
 
-@router.delete("/{port}")
+@router.delete("/{port}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
 def delete_node_route(port: str) -> dict:
     node = get_node(port)
     if not node:
@@ -73,7 +74,7 @@ def delete_node_route(port: str) -> dict:
     }
 
 
-@router.post("/{port}/command")
+@router.post("/{port}/command", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
     client = get_node_client(port)
     if not client:
@@ -116,7 +117,7 @@ def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
     raise HTTPException(status_code=400, detail="unknown command")
 
 
-@router.patch("/{port}")
+@router.patch("/{port}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 def patch_node(port: str, payload: NodeUpdate) -> dict:
     node = get_node(port)
     if not node:

@@ -126,6 +126,17 @@ flowchart TB
 
 Weitere Diagramme und Sequenzen: `diagramme/README.md`.
 
+## Tests
+
+- Backend: `pip install -r sensorhub-backend/requirements.txt -r sensorhub-backend/requirements-dev.txt`
+- Tests: `pytest sensorhub-backend/tests`
+
+## CI/CD
+
+GitHub Actions Workflow: `.github/workflows/ci.yml`
+- Backend-Tests (pytest)
+- Frontend-Build (Vite)
+
 ## Startbefehle (lokal)
 
 ### SensorHub Backend

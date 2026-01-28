@@ -1,1 +1,1 @@
-Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/admin/reset -Headers @{ "X-Reset-Token"="reset123" }
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/admin/reset -Headers @{ "X-Reset-Token"="$env:ADMIN_RESET_TOKEN" }

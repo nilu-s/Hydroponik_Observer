@@ -8,6 +8,10 @@ SensorHub Frontend und Camera Worker.
 Transport: UART/USB Serial, 115200 Baud. Jede Nachricht ist eine JSON-Zeile
 (`\n`-terminiert).
 
+Geplant: Nachrichten sollen zukuenftig signiert (z.B. HMAC) werden, um
+Manipulationen im Serial-Transport zu erkennen. TLS ist fuer serielle
+Links nicht direkt moeglich, aber Signaturen/Sequenzen sind vorgesehen.
+
 ### Ablauf (Live Reading)
 
 ```mermaid

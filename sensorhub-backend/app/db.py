@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Iterable, Optional
 
 from .config import DB_PATH, DEFAULT_PHOTO_INTERVAL_MINUTES, DEFAULT_VALUE_INTERVAL_MINUTES, ensure_dirs
+
+_thread_local = threading.local()
 
 
 def _now_ms() -> int:
@@ -27,8 +30,8 @@ def init_db(reset: bool = False) -> None:
                 setup_id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 node_id TEXT NULL,
-                value_interval_sec INTEGER NOT NULL,
-                photo_interval_sec INTEGER NOT NULL,
+                value_interval_minutes INTEGER NOT NULL,
+                photo_interval_minutes INTEGER NOT NULL,
                 created_at INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS nodes (
@@ -78,11 +81,29 @@ def init_db(reset: bool = False) -> None:
 
 @contextmanager
 def _get_conn() -> Iterable[sqlite3.Connection]:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        _thread_local.conn = conn
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        pass
+
+
+def close_connections() -> None:
+    conn = getattr(_thread_local, "conn", None)
+    if conn is None:
+        return
+    try:
+        conn.close()
+    finally:
+        _thread_local.conn = None
     finally:
         conn.close()
 
@@ -110,7 +131,8 @@ def create_setup(name: str) -> dict[str, Any]:
             """
             INSERT INTO setups (
                 setup_id, name, node_id,
-                value_interval_sec, photo_interval_sec, created_at
+                value_interval_minutes, photo_interval_minutes,
+                created_at
             ) VALUES (?, ?, NULL, ?, ?, ?)
             """,
             (
@@ -133,8 +155,8 @@ def update_setup(setup_id: str, updates: dict[str, Any]) -> Optional[dict[str, A
         "name": "name",
         "port": "node_id",
         "cameraPort": "camera_id",
-        "valueIntervalMinutes": "value_interval_sec",
-        "photoIntervalMinutes": "photo_interval_sec",
+        "valueIntervalMinutes": "value_interval_minutes",
+        "photoIntervalMinutes": "photo_interval_minutes",
     }
     for key, column in mapping.items():
         if key in updates:
@@ -296,6 +318,24 @@ def list_all_readings(setup_id: str) -> list[dict[str, Any]]:
             (setup_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def iter_readings(setup_id: str, batch_size: int = 1000) -> Iterable[dict[str, Any]]:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            """
+            SELECT * FROM readings
+            WHERE setup_id = ?
+            ORDER BY ts DESC
+            """,
+            (setup_id,),
+        )
+        while True:
+            batch = cursor.fetchmany(batch_size)
+            if not batch:
+                break
+            for row in batch:
+                yield dict(row)
 
 
 def delete_readings_by_setup(setup_id: str) -> None:

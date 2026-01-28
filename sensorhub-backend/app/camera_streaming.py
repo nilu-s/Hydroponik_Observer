@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -12,17 +13,22 @@ from starlette.responses import Response, StreamingResponse
 
 from .config import (
     CAMERA_WORKER_CANDIDATES,
+    CAMERA_WORKER_MAX_PER_DEVICE,
+    CAMERA_WORKER_MAX_TOTAL,
     CAMERA_WORKER_PATH,
     DEFAULT_PHOTO_INTERVAL_MINUTES,
     PHOTOS_DIR,
+    PHOTO_CAPTURE_POLL_INTERVAL_SEC,
     log_event,
 )
 from .db import get_camera, get_setup, list_setups
+from .security import resolve_under, validate_identifier
 
 WORKER_MAGIC = b"FRAM"
 WORKER_HEADER_LEN = 32
 WORKER_VERSION = 1
 ACTIVE_WORKERS: dict[str, set[subprocess.Popen[bytes]]] = {}
+ACTIVE_WORKERS_LOCK = threading.Lock()
 
 
 async def stream_camera(setup_id: str) -> StreamingResponse:
@@ -76,7 +82,7 @@ async def photo_capture_loop() -> None:
             camera_id = setup.get("camera_id")
             if not camera_id:
                 continue
-            interval_minutes = setup.get("photo_interval_sec")
+            interval_minutes = setup.get("photo_interval_minutes")
             if interval_minutes is None:
                 interval_minutes = DEFAULT_PHOTO_INTERVAL_MINUTES
             if interval_minutes <= 0:
@@ -100,10 +106,11 @@ async def photo_capture_loop() -> None:
             if next_due <= now_ms:
                 next_due = now_ms + interval_ms
             next_due_by_setup[setup_id] = next_due
-        await asyncio.sleep(1)
+        await asyncio.sleep(max(PHOTO_CAPTURE_POLL_INTERVAL_SEC, 0.2))
 
 
 def _get_camera_for_setup(setup_id: str) -> dict:
+    validate_identifier(setup_id, "setup_id")
     setup = get_setup(setup_id)
     if not setup:
         raise HTTPException(status_code=404, detail="setup not found")
@@ -125,15 +132,24 @@ def _open_worker_process(camera: dict) -> subprocess.Popen[bytes]:
     command = _resolve_worker_command()
     if not command:
         raise HTTPException(status_code=503, detail="camera worker unavailable")
+    with ACTIVE_WORKERS_LOCK:
+        total_active = sum(len(processes) for processes in ACTIVE_WORKERS.values())
+        device_active = len(ACTIVE_WORKERS.get(device_id, set()))
+        if total_active >= CAMERA_WORKER_MAX_TOTAL:
+            log_event("camera.worker_limit_total", active=total_active)
+            raise HTTPException(status_code=429, detail="camera worker limit reached")
+        if device_active >= CAMERA_WORKER_MAX_PER_DEVICE:
+            log_event("camera.worker_limit_device", device_id=device_id, active=device_active)
+            raise HTTPException(status_code=429, detail="camera worker limit reached")
     log_event("camera.worker_start", device_id=device_id)
-    print(f"camera.worker_start: device_id={device_id}")
     try:
         process = subprocess.Popen(
             command + ["--device", device_id],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        ACTIVE_WORKERS.setdefault(device_id, set()).add(process)
+        with ACTIVE_WORKERS_LOCK:
+            ACTIVE_WORKERS.setdefault(device_id, set()).add(process)
         return process
     except Exception as exc:
         log_event("camera.worker_spawn_failed", error=str(exc))
@@ -147,21 +163,25 @@ def _stop_worker_process(process: subprocess.Popen[bytes]) -> None:
             process.wait(timeout=1)
         except Exception:
             process.kill()
-    for device_id, processes in list(ACTIVE_WORKERS.items()):
-        if process in processes:
-            processes.discard(process)
-            if not processes:
-                ACTIVE_WORKERS.pop(device_id, None)
-            break
+    with ACTIVE_WORKERS_LOCK:
+        for device_id, processes in list(ACTIVE_WORKERS.items()):
+            if process in processes:
+                processes.discard(process)
+                if not processes:
+                    ACTIVE_WORKERS.pop(device_id, None)
+                break
 
 
 def reset_runtime() -> None:
-    for device_id in list(ACTIVE_WORKERS.keys()):
+    with ACTIVE_WORKERS_LOCK:
+        device_ids = list(ACTIVE_WORKERS.keys())
+    for device_id in device_ids:
         stop_workers_for_device(device_id)
 
 
 def stop_workers_for_device(device_id: str) -> None:
-    processes = ACTIVE_WORKERS.get(device_id, set())
+    with ACTIVE_WORKERS_LOCK:
+        processes = set(ACTIVE_WORKERS.get(device_id, set()))
     for process in list(processes):
         try:
             if process.poll() is None:
@@ -173,8 +193,9 @@ def stop_workers_for_device(device_id: str) -> None:
             except Exception:
                 pass
         processes.discard(process)
-    if not processes:
-        ACTIVE_WORKERS.pop(device_id, None)
+    with ACTIVE_WORKERS_LOCK:
+        if not processes:
+            ACTIVE_WORKERS.pop(device_id, None)
 
 
 def _resolve_worker_command() -> Optional[list[str]]:
@@ -203,16 +224,13 @@ def _read_worker_frame_bytes(process: subprocess.Popen[bytes]) -> Optional[bytes
     header = _read_exact(process, WORKER_HEADER_LEN)
     if not header:
         _log_worker_stderr(process, event="camera.worker_stream_ended")
-        print("camera.worker_stream_ended")
         return None
     if header[:4] != WORKER_MAGIC:
         log_event("camera.worker_bad_magic")
-        print("camera.worker_bad_magic")
         return None
     version = int.from_bytes(header[4:6], "little")
     if version != WORKER_VERSION:
         log_event("camera.worker_bad_version", version=version)
-        print(f"camera.worker_bad_version: {version}")
         return None
     header_len = int.from_bytes(header[6:8], "little")
     if header_len > WORKER_HEADER_LEN:
@@ -225,11 +243,9 @@ def _read_worker_frame_bytes(process: subprocess.Popen[bytes]) -> Optional[bytes
     payload = _read_exact(process, payload_len)
     if not payload:
         _log_worker_stderr(process, event="camera.worker_empty_frame")
-        print("camera.worker_empty_frame")
         return None
     if mime and mime != b"image/jpeg":
         log_event("camera.worker_unexpected_mime", mime=mime.decode(errors="ignore"))
-        print(f"camera.worker_unexpected_mime: {mime.decode(errors='ignore')}")
     return payload
 
 
@@ -254,8 +270,6 @@ def _log_worker_stderr(process: subprocess.Popen[bytes], event: str) -> None:
     except Exception:
         error = ""
     log_event(event, stderr=error)
-    if error:
-        print(f"{event}: {error}")
 
 
 def _capture_single_frame(camera: dict) -> Optional[bytes]:
@@ -273,18 +287,19 @@ def _capture_single_frame(camera: dict) -> Optional[bytes]:
 
 
 def _capture_and_save(setup_id: str, camera: dict) -> Optional[dict]:
+    safe_setup_id = validate_identifier(setup_id, "setup_id")
     frame_bytes = _capture_single_frame(camera)
     if frame_bytes is None:
         return None
     ts = int(time.time() * 1000)
     stamp = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d_%H-%M-%S")
-    folder = PHOTOS_DIR / setup_id
+    folder = resolve_under(PHOTOS_DIR, safe_setup_id)
     folder.mkdir(parents=True, exist_ok=True)
-    filename = f"{setup_id}_{stamp}.jpg"
+    filename = f"{safe_setup_id}_{stamp}.jpg"
     path = folder / filename
     path.write_bytes(frame_bytes)
     return {
         "ts": ts,
-        "path": f"/data/photos/{setup_id}/{filename}",
+        "path": f"/data/photos/{safe_setup_id}/{filename}",
         "cameraId": camera.get("camera_id"),
     }

@@ -10,6 +10,11 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 - Zeitstempel (`ts`, `createdAt`, `lastSeenAt`) sind Unix Epoch in Millisekunden.
 - `status_json` ist ein JSON-String, der ein Array enthaelt (z.B. `["ok"]`).
 - Nullable Felder koennen `null` sein (z.B. `cameraPort`, `port`).
+- Auth: Alle Endpunkte benoetigen `Authorization: Bearer <JWT>`.
+  - Der JWT muss eine `role` oder `roles`-Claim enthalten (`viewer`, `operator`, `admin`).
+  - Schreiboperationen benoetigen mind. `operator`, gefaehrliche Loeschungen `admin`.
+- CSRF: Für `POST/PUT/PATCH/DELETE` wird bei fehlendem `Origin` ein Header
+  `X-CSRF-Token` erwartet.
 
 ## Setups
 
@@ -86,7 +91,12 @@ im FastAPI-Standard: `{ "detail": "..." }`.
 ## Admin
 
 - `POST /admin/reset` -> DB und Runtime reset
-  - Header: `X-Reset-Token: reset123`
+  - Header: `X-Reset-Token: <ADMIN_RESET_TOKEN>`
+
+## WebSocket Live
+
+- `WS /live` -> Live Updates
+  - Auth per `Authorization: Bearer <JWT>` oder Query `?token=<JWT>`
 
 ## Beispiele
 

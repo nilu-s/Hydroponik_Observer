@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..camera_devices import broadcast_camera_devices, list_camera_devices
 from ..db import delete_camera, get_camera, update_camera_alias
 from ..models import CameraUpdate
+from ..security import ROLE_ADMIN, ROLE_OPERATOR, require_roles
 
 router = APIRouter(prefix="/cameras")
 
@@ -14,7 +15,7 @@ async def list_camera_devices_route() -> list[dict]:
     return list_camera_devices()
 
 
-@router.delete("/{camera_id}")
+@router.delete("/{camera_id}", dependencies=[Depends(require_roles(ROLE_ADMIN))])
 async def delete_camera_route(camera_id: str) -> dict:
     camera = get_camera(camera_id)
     if not camera:
@@ -24,7 +25,7 @@ async def delete_camera_route(camera_id: str) -> dict:
     return {"ok": True}
 
 
-@router.patch("/{camera_id}")
+@router.patch("/{camera_id}", dependencies=[Depends(require_roles(ROLE_OPERATOR, ROLE_ADMIN))])
 async def patch_camera(camera_id: str, payload: CameraUpdate) -> dict:
     camera = get_camera(camera_id)
     if not camera:
