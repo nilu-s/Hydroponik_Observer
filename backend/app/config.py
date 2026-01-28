@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -10,23 +11,32 @@ PROJECT_DIR = BASE_DIR.parent
 DATA_DIR = PROJECT_DIR / "data"
 PHOTOS_DIR = DATA_DIR / "photos"
 DB_PATH = DATA_DIR / "sensorhub.db"
-WORKER_PATH = (
+DEFAULT_VALUE_INTERVAL_MINUTES = 30
+DEFAULT_PHOTO_INTERVAL_MINUTES = 720
+
+NODE_SCAN_INTERVAL_SEC = 2
+CAMERA_SCAN_INTERVAL_SEC = 5
+NODE_RETRY_ATTEMPTS = 3
+NODE_RETRY_BACKOFF_BASE_SEC = 0.1
+
+CAMERA_WORKER_TIMEOUT_SEC = 10
+CAMERA_WORKER_PATH = os.getenv("CAMERA_WORKER_PATH", "")
+CAMERA_WORKER_CANDIDATES = [
     PROJECT_DIR
     / "backend"
     / "worker"
     / "bin"
     / "Release"
     / "net6.0-windows10.0.19041.0"
-    / "camera_worker.dll"
-)
-
-DEFAULT_VALUE_INTERVAL_SEC = 1800
-DEFAULT_PHOTO_INTERVAL_SEC = 43200
-
-NODE_SCAN_INTERVAL_SEC = 7
-CAMERA_SCAN_INTERVAL_SEC = 5
-NODE_RETRY_ATTEMPTS = 3
-NODE_RETRY_BACKOFF_BASE_SEC = 0.1
+    / "CameraWorker.exe",
+    PROJECT_DIR
+    / "backend"
+    / "worker"
+    / "bin"
+    / "Debug"
+    / "net6.0-windows10.0.19041.0"
+    / "CameraWorker.exe",
+]
 
 SERIAL_BAUDRATE = 115200
 SERIAL_TIMEOUT_SEC = 1.5

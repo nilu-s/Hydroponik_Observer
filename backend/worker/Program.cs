@@ -14,11 +14,6 @@ internal static class Program
 {
     private const string Magic = "FRAM";
     private const ushort Version = 1;
-    private static readonly Dictionary<string, string> UsbAlias = new()
-    {
-        { "VID_1532&PID_0E05", "Razer Kiyo Pro" }
-    };
-
     public static int Main(string[] args)
     {
         try
@@ -70,14 +65,18 @@ internal static class Program
         var properties = new[]
         {
             "System.ItemNameDisplay",
-            "System.Devices.FriendlyName"
+            "System.Devices.FriendlyName",
+            "System.Devices.DeviceInstanceId",
+            "System.Devices.LocationPaths"
         };
         var selector = DeviceInformation.GetAqsFilterFromDeviceClass(DeviceClass.VideoCapture);
         var devices = await DeviceInformation.FindAllAsync(selector, properties);
         var payload = devices.Select(d => new
         {
             device_id = d.Id,
-            friendly_name = ResolveFriendlyName(d)
+            friendly_name = ResolveFriendlyName(d),
+            port_id = ResolvePortId(d),
+            instance_id = ResolveInstanceId(d)
         });
         var json = JsonSerializer.Serialize(payload);
         Console.Out.WriteLine(json);
@@ -85,11 +84,6 @@ internal static class Program
 
     private static string ResolveFriendlyName(DeviceInformation device)
     {
-        var alias = TryGetUsbAlias(device.Id);
-        if (!string.IsNullOrWhiteSpace(alias))
-        {
-            return alias;
-        }
         if (device.Properties.TryGetValue("System.ItemNameDisplay", out var itemName) && itemName is string item)
         {
             return item;
@@ -101,19 +95,32 @@ internal static class Program
         return device.Name;
     }
 
-    private static string? TryGetUsbAlias(string deviceId)
+    private static string ResolvePortId(DeviceInformation device)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(
-            deviceId,
-            "VID_[0-9A-F]{4}&PID_[0-9A-F]{4}",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase
-        );
-        if (!match.Success)
+        if (device.Properties.TryGetValue("System.Devices.LocationPaths", out var locations))
         {
-            return null;
+            if (locations is string[] paths && paths.Length > 0)
+            {
+                return paths[0];
+            }
+            if (locations is IReadOnlyList<string> list && list.Count > 0)
+            {
+                return list[0];
+            }
         }
-        var key = match.Value.ToUpperInvariant();
-        return UsbAlias.TryGetValue(key, out var name) ? name : null;
+        return "";
+    }
+
+    private static string ResolveInstanceId(DeviceInformation device)
+    {
+        if (device.Properties.TryGetValue("System.Devices.DeviceInstanceId", out var instance))
+        {
+            if (instance is string instanceId && !string.IsNullOrWhiteSpace(instanceId))
+            {
+                return instanceId;
+            }
+        }
+        return "";
     }
 
     private static async Task StreamDevice(string deviceId)
@@ -123,10 +130,18 @@ internal static class Program
         {
             VideoDeviceId = deviceId,
             StreamingCaptureMode = StreamingCaptureMode.Video,
-            SharingMode = MediaCaptureSharingMode.ExclusiveControl,
+            SharingMode = MediaCaptureSharingMode.SharedReadOnly,
             MemoryPreference = MediaCaptureMemoryPreference.Cpu
         };
-        await capture.InitializeAsync(settings);
+        try
+        {
+            await capture.InitializeAsync(settings);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"init failed: {ex.Message}");
+            return;
+        }
 
         var source = capture.FrameSources.Values
             .FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);

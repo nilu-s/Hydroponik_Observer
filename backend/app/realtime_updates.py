@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException, WebSocket
 
-from .config import DEFAULT_VALUE_INTERVAL_SEC, LIVE_POLL_INTERVAL_SEC
+from .config import DEFAULT_VALUE_INTERVAL_MINUTES, LIVE_POLL_INTERVAL_SEC
 from .db import get_setup, insert_reading, list_setups
 from .nodes import fetch_node_reading
 
@@ -29,6 +29,19 @@ def _build_reading_payload(setup_id: str, reading: dict[str, Any]) -> dict[str, 
         "temp": reading["temp"],
         "status": reading.get("status", ["ok"]),
     }
+
+
+LIVE_MANAGER: Optional["LiveManager"] = None
+
+
+def register_live_manager(manager: "LiveManager") -> None:
+    global LIVE_MANAGER
+    LIVE_MANAGER = manager
+
+
+async def broadcast_system_reset(reason: str) -> None:
+    if LIVE_MANAGER:
+        await LIVE_MANAGER.broadcast_all({"t": "reset", "reason": reason})
 
 
 class LiveManager:
@@ -109,9 +122,9 @@ async def readings_capture_loop() -> None:
             node_id = setup.get("node_id")
             if not node_id:
                 continue
-            interval_sec = max(1, int(setup.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_SEC))
+            interval_minutes = setup.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES
             last_capture_ts = last_capture_by_setup.get(setup_id, 0)
-            if (now_ms - last_capture_ts) < interval_sec * 1000:
+            if (now_ms - last_capture_ts) < interval_minutes * 60 * 1000:
                 continue
             reading = await _fetch_live_reading(setup_id, node_id)
             if not reading:

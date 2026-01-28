@@ -6,8 +6,8 @@ type Props = {
   isOpen: boolean;
   setupName: string;
   isSavingName: boolean;
-  nodeId: string | null;
-  cameraId: string | null;
+  port: string | null;
+  cameraPort: string | null;
   nodes: NodeInfo[];
   cameraOptions: CameraDevice[];
   sharedNodeIds: Set<string>;
@@ -15,8 +15,8 @@ type Props = {
   onClose: () => void;
   onNameChange: (value: string) => void;
   onSaveName: () => void;
-  onNodeChange: (nodeId: string | null) => void;
-  onCameraChange: (cameraId: string | null) => void;
+  onNodeChange: (port: string | null) => void;
+  onCameraChange: (cameraPort: string | null) => void;
   onDeleteSetup: () => void;
   children: ReactNode;
 };
@@ -25,8 +25,8 @@ const SetupSettingsModal: FC<Props> = ({
   isOpen,
   setupName,
   isSavingName,
-  nodeId,
-  cameraId,
+  port,
+  cameraPort,
   nodes,
   cameraOptions,
   sharedNodeIds,
@@ -42,6 +42,10 @@ const SetupSettingsModal: FC<Props> = ({
   if (!isOpen) {
     return null;
   }
+
+  const normalizeCameraId = (cameraIdValue: string) => {
+    return cameraIdValue.replace(/^fallback:/i, "");
+  };
 
   return (
     <div className="modal-overlay">
@@ -79,19 +83,19 @@ const SetupSettingsModal: FC<Props> = ({
             <div className="setup-row">
               <label className="label">Node</label>
               <select
-                className={`select${sharedNodeIds.has(nodeId ?? "") ? " select-shared" : ""}`}
-                value={nodeId ?? ""}
+                className={`select${sharedNodeIds.has(port ?? "") ? " select-shared" : ""}`}
+                value={port ?? ""}
                 onChange={(event) => onNodeChange(event.target.value || null)}
               >
                 <option value="">None</option>
                 {nodes.map((node) => (
                   <option
-                    key={node.nodeId}
-                    value={node.nodeId}
-                    className={sharedNodeIds.has(node.nodeId) ? "option-shared" : ""}
+                    key={node.port}
+                    value={node.port}
+                    className={sharedNodeIds.has(node.port) ? "option-shared" : ""}
                   >
-                    {node.nodeId} ({node.kind})
-                    {sharedNodeIds.has(node.nodeId) ? " • shared" : ""}
+                    {(node.alias ?? node.port)} ({node.kind})
+                    {sharedNodeIds.has(node.port) ? " • shared" : ""}
                   </option>
                 ))}
               </select>
@@ -100,19 +104,21 @@ const SetupSettingsModal: FC<Props> = ({
               <label className="label">Camera</label>
               <select
                 className={`select${
-                  sharedCameraIds.has(cameraId ?? "") ? " select-shared" : ""
+                  sharedCameraIds.has(cameraPort ?? "") ? " select-shared" : ""
                 }`}
-                value={cameraId ?? ""}
+                value={cameraPort ?? ""}
                 onChange={(event) => onCameraChange(event.target.value || null)}
               >
-                <option value="">None</option>
+                <option value="">Noone</option>
                 {cameraOptions.map((camera) => (
                   <option
                     key={camera.cameraId}
                     value={camera.cameraId}
                     className={sharedCameraIds.has(camera.cameraId) ? "option-shared" : ""}
                   >
-                    {(camera.friendlyName || camera.cameraId) +
+                    {(camera.alias ||
+                      camera.friendlyName ||
+                      normalizeCameraId(camera.cameraId)) +
                       (camera.status === "offline" ? " • offline" : "") +
                       (sharedCameraIds.has(camera.cameraId) ? " • shared" : "")}
                   </option>

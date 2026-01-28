@@ -11,25 +11,25 @@ class SetupCreate(BaseModel):
 
 class SetupUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    nodeId: Optional[str] = None
-    cameraId: Optional[str] = None
-    valueIntervalSec: Optional[int] = Field(default=None, ge=1)
-    photoIntervalSec: Optional[int] = Field(default=None, ge=1)
+    port: Optional[str] = None
+    cameraPort: Optional[str] = None
+    valueIntervalMinutes: Optional[int] = Field(default=None, ge=1)
+    photoIntervalMinutes: Optional[int] = Field(default=None, ge=1)
 
 
 class Setup(BaseModel):
     setupId: str
     name: str
-    nodeId: Optional[str]
-    cameraId: Optional[str]
-    valueIntervalSec: int
-    photoIntervalSec: int
+    port: Optional[str]
+    cameraPort: Optional[str]
+    valueIntervalMinutes: int
+    photoIntervalMinutes: int
     createdAt: int
 
 
 class Node(BaseModel):
-    nodeId: str
-    name: Optional[str] = None
+    port: str
+    alias: Optional[str] = None
     kind: str
     fw: Optional[str] = None
     capJson: Optional[str] = None
@@ -40,18 +40,11 @@ class Node(BaseModel):
 
 
 class NodeUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
-class Camera(BaseModel):
-    cameraId: str
-    deviceId: str
-    friendlyName: Optional[str] = None
-    pnpDeviceId: Optional[str] = None
-    containerId: Optional[str] = None
-    lastSeenAt: Optional[int] = None
-    status: Optional[str] = None
-    lastError: Optional[str] = None
+class CameraUpdate(BaseModel):
+    alias: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 
 class Reading(BaseModel):
@@ -63,7 +56,7 @@ class Reading(BaseModel):
 
 
 class Calibration(BaseModel):
-    nodeId: str
+    port: str
     calibVersion: int
     calibHash: str
     payloadJson: str

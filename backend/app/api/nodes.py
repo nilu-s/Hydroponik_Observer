@@ -10,12 +10,12 @@ from ..db import (
     get_node,
     list_nodes,
     list_setups,
-    update_node_name,
+    update_node_alias,
     update_setup,
     upsert_node,
 )
 from ..models import NodeCommandRequest, NodeUpdate
-from ..nodes import ensure_dummy_node, get_dummy_reading, get_node_client, list_serial_ports
+from ..nodes import get_node_client, list_serial_ports, remove_node_client
 from .setups import delete_setup_assets
 
 router = APIRouter(prefix="/nodes")
@@ -23,12 +23,11 @@ router = APIRouter(prefix="/nodes")
 
 @router.get("")
 def get_nodes() -> list[dict]:
-    ensure_dummy_node()
     rows = list_nodes()
     return [
         {
-            "nodeId": row["node_id"],
-            "name": row.get("name"),
+            "port": row["node_id"],
+            "alias": row.get("name"),
             "kind": row["kind"],
             "fw": row["fw"],
             "capJson": row["cap_json"],
@@ -46,24 +45,24 @@ def get_serial_ports() -> list[dict[str, str]]:
     return list_serial_ports()
 
 
-@router.delete("/{node_id}")
-def delete_node_route(node_id: str) -> dict:
-    if node_id == "DUMMY":
-        raise HTTPException(status_code=409, detail="cannot delete dummy node")
-    node = get_node(node_id)
+@router.delete("/{port}")
+def delete_node_route(port: str) -> dict:
+    node = get_node(port)
     if not node:
         raise HTTPException(status_code=404, detail="node not found")
-    setups = [row for row in list_setups() if row.get("node_id") == node_id]
+    if get_node_client(port):
+        remove_node_client(port)
+    setups = [row for row in list_setups() if row.get("node_id") == port]
     deleted_photos = 0
     for setup in setups:
         setup_id = setup["setup_id"]
         deleted_photos += delete_setup_assets(setup_id)
-        update_setup(setup_id, {"nodeId": None})
-    delete_calibration(node_id)
-    delete_node(node_id)
+        update_setup(setup_id, {"port": None})
+    delete_calibration(port)
+    delete_node(port)
     log_event(
         "node.deleted",
-        node_id=node_id,
+        node_id=port,
         affected_setups=len(setups),
         deleted_photos=deleted_photos,
     )
@@ -74,13 +73,13 @@ def delete_node_route(node_id: str) -> dict:
     }
 
 
-@router.post("/{node_id}/command")
-def post_node_command(node_id: str, payload: NodeCommandRequest) -> dict:
-    if node_id == "DUMMY":
+@router.post("/{port}/command")
+def post_node_command(port: str, payload: NodeCommandRequest) -> dict:
+    if port == "DUMMY":
         if payload.t == "get_all":
-            return get_dummy_reading(node_id)
+            return get_dummy_reading(port)
         return {"ok": True, "note": "dummy node"}
-    client = get_node_client(node_id)
+    client = get_node_client(port)
     if not client:
         raise HTTPException(status_code=503, detail="node offline")
 
@@ -96,7 +95,7 @@ def post_node_command(node_id: str, payload: NodeCommandRequest) -> dict:
             expect_response=False,
         )
         upsert_node(
-            node_id=node_id,
+            node_id=port,
             name=None,
             kind="real",
             fw=client.hello.fw,
@@ -121,24 +120,17 @@ def post_node_command(node_id: str, payload: NodeCommandRequest) -> dict:
     raise HTTPException(status_code=400, detail="unknown command")
 
 
-@router.patch("/{node_id}")
-def patch_node(node_id: str, payload: NodeUpdate) -> dict:
-    if node_id == "DUMMY":
+@router.patch("/{port}")
+def patch_node(port: str, payload: NodeUpdate) -> dict:
+    if port == "DUMMY":
         raise HTTPException(status_code=409, detail="cannot rename dummy node")
-    node = get_node(node_id)
+    node = get_node(port)
     if not node:
         raise HTTPException(status_code=404, detail="node not found")
-    updated = update_node_name(node_id, payload.name) or node
-    if payload.name:
-        client = get_node_client(node_id)
-        if client:
-            try:
-                client.send_command({"t": "set_usb_name", "name": payload.name}, expect_response=True)
-            except Exception as exc:
-                log_event("nodes.usb_name_failed", node_id=node_id, error=str(exc))
+    updated = update_node_alias(port, payload.alias) or node
     return {
-        "nodeId": updated["node_id"],
-        "name": updated.get("name"),
+        "port": updated["node_id"],
+        "alias": updated.get("name"),
         "kind": updated["kind"],
         "fw": updated["fw"],
         "capJson": updated["cap_json"],

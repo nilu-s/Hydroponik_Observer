@@ -34,6 +34,10 @@ const SetupCard = ({
   onCaptureReading,
   onCapturePhoto,
 }: Props) => {
+  const normalizeCameraId = (cameraIdValue: string) => {
+    return cameraIdValue.replace(/^fallback:/i, "");
+  };
+
   const [name, setName] = useState(setup.name);
   const [isSavingName, setIsSavingName] = useState(false);
   const [isCapturingReading, setIsCapturingReading] = useState(false);
@@ -46,30 +50,30 @@ const SetupCard = ({
   }, [setup.name]);
 
   const nodeLabel = useMemo(() => {
-    if (!setup.nodeId) {
+    if (!setup.port) {
       return "None";
     }
-    const node = nodes.find((item) => item.nodeId === setup.nodeId);
+    const node = nodes.find((item) => item.port === setup.port);
     if (!node) {
-      return setup.nodeId;
+      return setup.port;
     }
-    const label = node.name ?? node.nodeId;
+    const label = node.alias ?? node.port;
     return label;
-  }, [nodes, setup.nodeId]);
+  }, [nodes, setup.port]);
   const nodeMode = useMemo(() => {
-    if (!setup.nodeId) {
+    if (!setup.port) {
       return "unknown";
     }
-    const node = nodes.find((item) => item.nodeId === setup.nodeId);
+    const node = nodes.find((item) => item.port === setup.port);
     return node?.mode ?? "unknown";
-  }, [nodes, setup.nodeId]);
+  }, [nodes, setup.port]);
   const nodeStatus = useMemo(() => {
-    if (!setup.nodeId) {
+    if (!setup.port) {
       return null;
     }
-    const node = nodes.find((item) => item.nodeId === setup.nodeId);
+    const node = nodes.find((item) => item.port === setup.port);
     return node?.status ?? "unknown";
-  }, [nodes, setup.nodeId]);
+  }, [nodes, setup.port]);
 
   const handleNameSave = async () => {
     if (!name.trim() || name.trim() === setup.name) {
@@ -84,15 +88,15 @@ const SetupCard = ({
   };
 
   const handleNodeChange = async (value: string | null) => {
-    await onPatch({ nodeId: value });
+    await onPatch({ port: value });
   };
 
   const handleCameraChange = async (value: string | null) => {
-    await onPatch({ cameraId: value });
+    await onPatch({ cameraPort: value });
   };
 
   const handleCaptureReading = async () => {
-    if (!setup.nodeId) {
+    if (!setup.port) {
       return;
     }
     setIsCapturingReading(true);
@@ -105,7 +109,7 @@ const SetupCard = ({
   };
 
   const handleCapturePhoto = async () => {
-    if (!setup.cameraId) {
+    if (!setup.cameraPort) {
       return;
     }
     setIsCapturingPhoto(true);
@@ -122,16 +126,18 @@ const SetupCard = ({
   };
 
   const isNodeShared =
-    !!setup.nodeId &&
-    setups.some((item) => item.setupId !== setup.setupId && item.nodeId === setup.nodeId);
+    !!setup.port &&
+    setups.some((item) => item.setupId !== setup.setupId && item.port === setup.port);
   const isCameraShared =
-    !!setup.cameraId &&
-    setups.some((item) => item.setupId !== setup.setupId && item.cameraId === setup.cameraId);
+    !!setup.cameraPort &&
+    setups.some(
+      (item) => item.setupId !== setup.setupId && item.cameraPort === setup.cameraPort
+    );
   const sharedNodeIds = useMemo(() => {
     const map = new Map<string, number>();
     setups.forEach((item) => {
-      if (item.nodeId) {
-        map.set(item.nodeId, (map.get(item.nodeId) ?? 0) + 1);
+      if (item.port) {
+        map.set(item.port, (map.get(item.port) ?? 0) + 1);
       }
     });
     return new Set(
@@ -144,8 +150,8 @@ const SetupCard = ({
   const sharedCameraIds = useMemo(() => {
     const map = new Map<string, number>();
     setups.forEach((item) => {
-      if (item.cameraId) {
-        map.set(item.cameraId, (map.get(item.cameraId) ?? 0) + 1);
+      if (item.cameraPort) {
+        map.set(item.cameraPort, (map.get(item.cameraPort) ?? 0) + 1);
       }
     });
     return new Set(
@@ -155,15 +161,15 @@ const SetupCard = ({
     );
   }, [setups]);
   const isCameraKnown =
-    !!setup.cameraId &&
-    cameraDevices.some((camera) => camera.cameraId === setup.cameraId);
+    !!setup.cameraPort &&
+    cameraDevices.some((camera) => camera.cameraId === setup.cameraPort);
   const cameraOptions =
-    setup.cameraId && !isCameraKnown
+    setup.cameraPort && !isCameraKnown
       ? [
           {
-            cameraId: setup.cameraId,
+            cameraId: setup.cameraPort,
             deviceId: "",
-            friendlyName: `Unbekannt (${setup.cameraId})`,
+            friendlyName: `Unbekannt (${normalizeCameraId(setup.cameraPort)})`,
             status: "offline" as const,
           },
           ...cameraDevices,
@@ -171,24 +177,24 @@ const SetupCard = ({
       : cameraDevices;
 
   const cameraLabel = useMemo(() => {
-    if (!setup.cameraId) {
+    if (!setup.cameraPort) {
       return "None";
     }
-    const device = cameraOptions.find((camera) => camera.cameraId === setup.cameraId);
+    const device = cameraOptions.find((camera) => camera.cameraId === setup.cameraPort);
     if (!device) {
-      return setup.cameraId;
+      return normalizeCameraId(setup.cameraPort);
     }
-    return device.friendlyName || device.cameraId;
-  }, [cameraOptions, setup.cameraId]);
+    return device.alias || device.friendlyName || normalizeCameraId(device.cameraId);
+  }, [cameraOptions, setup.cameraPort]);
   const cameraStatus = useMemo(() => {
-    if (!setup.cameraId) {
+    if (!setup.cameraPort) {
       return null;
     }
-    const device = cameraDevices.find((camera) => camera.cameraId === setup.cameraId);
+    const device = cameraDevices.find((camera) => camera.cameraId === setup.cameraPort);
     return device?.status ?? "unknown";
-  }, [cameraDevices, setup.cameraId]);
-  const isNodeDisconnected = !!setup.nodeId && nodeStatus !== "online";
-  const isCameraDisconnected = !!setup.cameraId && cameraStatus !== "online";
+  }, [cameraDevices, setup.cameraPort]);
+  const isNodeDisconnected = !!setup.port && nodeStatus !== "online";
+  const isCameraDisconnected = !!setup.cameraPort && cameraStatus !== "online";
 
   return (
     <div className="card">
@@ -212,10 +218,10 @@ const SetupCard = ({
         <div className="card-camera-preview">
           <CameraPreview
             setupId={setup.setupId}
-            cameraId={setup.cameraId}
+            cameraPort={setup.cameraPort}
             cameraStatus={
-              setup.cameraId
-                ? cameraDevices.find((camera) => camera.cameraId === setup.cameraId)?.status
+              setup.cameraPort
+                ? cameraDevices.find((camera) => camera.cameraId === setup.cameraPort)?.status
                 : undefined
             }
             compact
@@ -227,7 +233,7 @@ const SetupCard = ({
             onClick={handleCaptureReading}
             aria-label="Capture values"
             title="Capture values"
-            disabled={!setup.nodeId || isCapturingReading}
+            disabled={!setup.port || isCapturingReading}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 3h11l3 3v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm2 2v6h10V6.5L14.5 5H7zm0 9v5h10v-5H7zm2 1h6v3H9v-3z" />
@@ -239,7 +245,7 @@ const SetupCard = ({
             onClick={handleCapturePhoto}
             aria-label="Capture photo"
             title="Capture photo"
-            disabled={!setup.cameraId || isCapturingPhoto}
+            disabled={!setup.cameraPort || isCapturingPhoto}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M9 4h6l1.5 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5L9 4zm3 4a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0 2.2a2.8 2.8 0 1 1 0 5.6 2.8 2.8 0 0 1 0-5.6z" />
@@ -288,8 +294,8 @@ const SetupCard = ({
         isOpen={showSettings}
         setupName={name}
         isSavingName={isSavingName}
-        nodeId={setup.nodeId}
-        cameraId={setup.cameraId}
+        port={setup.port}
+        cameraPort={setup.cameraPort}
         nodes={nodes}
         cameraOptions={cameraOptions}
         sharedNodeIds={sharedNodeIds}

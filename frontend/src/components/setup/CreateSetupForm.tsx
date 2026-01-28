@@ -4,10 +4,10 @@ import { CameraDevice, NodeInfo, Setup } from "../../types";
 
 type CreatePayload = {
   name: string;
-  nodeId: string;
-  cameraId: string;
-  valueIntervalSec: number;
-  photoIntervalSec: number;
+  port: string | null;
+  cameraPort: string | null;
+  valueIntervalMinutes: number;
+  photoIntervalMinutes: number;
 };
 
 type Props = {
@@ -20,31 +20,35 @@ type Props = {
 const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
-  const [nodeId, setNodeId] = useState("");
-  const [cameraId, setCameraId] = useState("");
+  const [port, setPort] = useState("");
+  const [cameraPort, setCameraPort] = useState("");
   const [valueIntervalMinutes, setValueIntervalMinutes] = useState(30);
   const [photoIntervalMinutes, setPhotoIntervalMinutes] = useState(720);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const assignedNodes = useMemo(
-    () => new Set(setups.map((setup) => setup.nodeId).filter(Boolean)),
+    () => new Set(setups.map((setup) => setup.port).filter(Boolean)),
     [setups]
   );
   const assignedCameras = useMemo(
-    () => new Set(setups.map((setup) => setup.cameraId).filter(Boolean)),
+    () => new Set(setups.map((setup) => setup.cameraPort).filter(Boolean)),
     [setups]
   );
 
-  const isNodeShared = !!nodeId && assignedNodes.has(nodeId);
-  const isCameraShared = !!cameraId && assignedCameras.has(cameraId);
+  const isNodeShared = !!port && assignedNodes.has(port);
+  const isCameraShared = !!cameraPort && assignedCameras.has(cameraPort);
 
   const cameraOptions = cameraDevices;
 
-  const shortDeviceId = (deviceId: string) => {
-    if (!deviceId) {
+  const normalizeCameraId = (cameraIdValue: string) => {
+    return cameraIdValue.replace(/^fallback:/i, "");
+  };
+
+  const shortCameraId = (cameraIdValue: string) => {
+    if (!cameraIdValue) {
       return "";
     }
-    const compact = deviceId.replace(/^@device:pnp:/i, "");
+    const compact = normalizeCameraId(cameraIdValue).replace(/^@device:pnp:/i, "");
     return compact.length > 32 ? `...${compact.slice(-32)}` : compact;
   };
 
@@ -57,8 +61,8 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
 
   const resetWizard = () => {
     setName("");
-    setNodeId("");
-    setCameraId("");
+    setPort("");
+    setCameraPort("");
     setValueIntervalMinutes(30);
     setPhotoIntervalMinutes(720);
   };
@@ -69,17 +73,17 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
   };
 
   const handleCreate = async () => {
-    if (!name.trim() || !nodeId || !cameraId || isSubmitting) {
+    if (!name.trim() || isSubmitting) {
       return;
     }
     setIsSubmitting(true);
     try {
       await onCreate({
         name: name.trim(),
-        nodeId,
-        cameraId,
-        valueIntervalSec: valueIntervalMinutes * 60,
-        photoIntervalSec: photoIntervalMinutes * 60,
+        port: port || null,
+        cameraPort: cameraPort || null,
+        valueIntervalMinutes: valueIntervalMinutes,
+        photoIntervalMinutes: photoIntervalMinutes,
       });
       closeWizard();
     } finally {
@@ -122,14 +126,14 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                 <label className="label">Node</label>
                 <select
                   className="select"
-                  value={nodeId}
-                  onChange={(event) => setNodeId(event.target.value)}
+                  value={port}
+                  onChange={(event) => setPort(event.target.value)}
                 >
-                  <option value="">Select node</option>
+                  <option value="">None</option>
                   {nodes.map((node) => (
-                    <option key={node.nodeId} value={node.nodeId}>
-                      {node.name ?? node.nodeId}
-                      {assignedNodes.has(node.nodeId) ? " • shared" : ""}
+                    <option key={node.port} value={node.port}>
+                      {node.alias ?? node.port}
+                      {assignedNodes.has(node.port) ? " • shared" : ""}
                     </option>
                   ))}
                 </select>
@@ -141,15 +145,17 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
                 <label className="label">Camera</label>
                 <select
                   className="select"
-                  value={cameraId}
-                  onChange={(event) => setCameraId(event.target.value)}
+                  value={cameraPort}
+                  onChange={(event) => setCameraPort(event.target.value)}
                 >
-                  <option value="">Select camera</option>
+                  <option value="">None</option>
                   {cameraOptions.map((camera) => (
                     <option key={camera.cameraId} value={camera.cameraId}>
-                      {(camera.friendlyName || camera.cameraId) +
-                        (camera.deviceId
-                          ? ` · ${shortDeviceId(camera.deviceId)}`
+                      {(camera.alias ||
+                        camera.friendlyName ||
+                        normalizeCameraId(camera.cameraId)) +
+                        (camera.cameraId
+                          ? ` · ${shortCameraId(camera.cameraId)}`
                           : camera.pnpDeviceId
                           ? ` · ${shortPnpId(camera.pnpDeviceId)}`
                           : "") +
@@ -202,7 +208,7 @@ const CreateSetupForm = ({ setups, nodes, cameraDevices, onCreate }: Props) => {
               <button
                 className="button primary"
                 onClick={handleCreate}
-                disabled={isSubmitting || !name.trim() || !nodeId || !cameraId}
+                disabled={isSubmitting || !name.trim()}
               >
                 Create setup
               </button>

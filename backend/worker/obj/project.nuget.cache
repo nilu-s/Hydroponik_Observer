@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "aHMO3OKirHRXfos/vdkVgFLoGzy7OGpaIyDw5jUlP3b57dJuGzkC9MzihfaPrSl3tVmE++txxhFqSYvB9kwruA==",
+  "dgSpecHash": "czAHeHkHBMgaXXEHQ9kXWrDgH7UwN75bvQC0z06q8I38o0Grq0/HcKSIjYt63jzH60BCp/9VsUrMR6VFsEu4Pw==",
   "success": true,
   "projectFilePath": "C:\\Studium\\BA Hydroponik\\SensorHUB\\backend\\worker\\CameraWorker.csproj",
   "expectedPackageFiles": [

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
+import re
+import shutil
 import time
 import tempfile
 import zipfile
@@ -11,25 +13,22 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
-from ..config import PHOTOS_DIR
+from ..camera_streaming import capture_photo_now, stop_workers_for_device
+from ..config import DEFAULT_PHOTO_INTERVAL_MINUTES, DEFAULT_VALUE_INTERVAL_MINUTES, PHOTOS_DIR
 from ..db import (
     create_setup,
     delete_setup,
-    delete_photos_by_setup,
     delete_readings_by_setup,
+    get_camera,
     get_setup,
     insert_reading,
-    list_all_photos,
     list_all_readings,
-    list_photo_paths_by_setup,
-    list_photos,
     list_readings,
     list_setups,
     update_setup,
 )
 from ..models import SetupCreate, SetupUpdate
 from ..nodes import fetch_setup_reading
-from ..camera_streaming import capture_photo_now
 
 router = APIRouter()
 
@@ -40,10 +39,10 @@ def get_setups() -> list[dict]:
         {
             "setupId": row["setup_id"],
             "name": row["name"],
-            "nodeId": row["node_id"],
-            "cameraId": row["camera_id"],
-            "valueIntervalSec": row["value_interval_sec"],
-            "photoIntervalSec": row["photo_interval_sec"],
+            "port": row["node_id"],
+            "cameraPort": row.get("camera_id"),
+            "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
+            "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
             "createdAt": row["created_at"],
         }
         for row in list_setups()
@@ -56,35 +55,51 @@ def post_setup(payload: SetupCreate) -> dict:
     return {
         "setupId": row["setup_id"],
         "name": row["name"],
-        "nodeId": row["node_id"],
-        "cameraId": row["camera_id"],
-        "valueIntervalSec": row["value_interval_sec"],
-        "photoIntervalSec": row["photo_interval_sec"],
+        "port": row["node_id"],
+        "cameraPort": row.get("camera_id"),
+        "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
+        "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
         "createdAt": row["created_at"],
     }
 
 
 @router.patch("/setups/{setup_id}")
 def patch_setup(setup_id: str, payload: SetupUpdate) -> dict:
-    updates = payload.model_dump(exclude_none=True)
+    updates = payload.model_dump(exclude_unset=True)
+    if "cameraPort" in updates:
+        camera_id = updates.get("cameraPort") or None
+        updates["cameraPort"] = camera_id
+        if camera_id and not get_camera(camera_id):
+            raise HTTPException(status_code=400, detail="camera not found")
     row = update_setup(setup_id, updates)
     if not row:
         raise HTTPException(status_code=404, detail="setup not found")
     return {
         "setupId": row["setup_id"],
         "name": row["name"],
-        "nodeId": row["node_id"],
-        "cameraId": row["camera_id"],
-        "valueIntervalSec": row["value_interval_sec"],
-        "photoIntervalSec": row["photo_interval_sec"],
+        "port": row["node_id"],
+        "cameraPort": row.get("camera_id"),
+        "valueIntervalMinutes": row.get("value_interval_sec") or DEFAULT_VALUE_INTERVAL_MINUTES,
+        "photoIntervalMinutes": row.get("photo_interval_sec") or DEFAULT_PHOTO_INTERVAL_MINUTES,
         "createdAt": row["created_at"],
     }
 
 
 @router.delete("/setups/{setup_id}")
 def delete_setup_route(setup_id: str) -> dict:
-    if not get_setup(setup_id):
+    setup = get_setup(setup_id)
+    if not setup:
         return {"ok": True, "deleted": False}
+    camera_id = setup.get("camera_id")
+    if camera_id:
+        still_used = any(
+            row.get("camera_id") == camera_id and row.get("setup_id") != setup_id
+            for row in list_setups()
+        )
+        if not still_used:
+            camera = get_camera(camera_id)
+            if camera and camera.get("pnp_device_id"):
+                stop_workers_for_device(camera["pnp_device_id"])
     deleted_photos = delete_setup_assets(setup_id)
     delete_setup(setup_id)
     return {"ok": True, "deleted": True, "deletedPhotos": deleted_photos}
@@ -124,7 +139,7 @@ def get_history(setup_id: str, limit: int = 200) -> dict:
     if not setup:
         raise HTTPException(status_code=404, detail="setup not found")
     readings = list_readings(setup_id, limit=limit)
-    photos = list_photos(setup_id, limit=limit)
+    photos = _list_photos(setup_id, setup.get("camera_id"))
     return {"readings": readings, "photos": photos}
 
 
@@ -141,7 +156,6 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
             setup_id = setup["setup_id"]
             setup_name = setup.get("name") or setup_id
             readings = list_all_readings(setup_id)
-            photos = list_all_photos(setup_id)
             for reading in readings:
                 ts = reading.get("ts")
                 reading["ts_iso"] = (
@@ -155,10 +169,6 @@ def export_all(background_tasks: BackgroundTasks) -> FileResponse:
                 readings,
                 ["id", "setup_id", "node_id", "ts_iso", "ph", "ec", "temp", "status_json"],
             )
-            for photo in photos:
-                path = Path(photo["path"])
-                if path.exists():
-                    zf.write(path, f"setups/{setup_id}/photos/{path.name}")
             zf.writestr(f"setups/{setup_id}/meta.txt", f"name={setup_name}\n")
 
     background_tasks.add_task(temp_path.unlink, missing_ok=True)
@@ -184,16 +194,35 @@ def write_csv_to_zip(
 
 
 def delete_setup_assets(setup_id: str) -> int:
-    paths = list_photo_paths_by_setup(setup_id)
-    for path in paths:
-        try:
-            Path(path).unlink(missing_ok=True)
-        except Exception:
-            pass
-    delete_photos_by_setup(setup_id)
     delete_readings_by_setup(setup_id)
-    try:
-        (PHOTOS_DIR / setup_id).rmdir()
-    except Exception:
-        pass
-    return len(paths)
+    photos_dir = PHOTOS_DIR / setup_id
+    deleted = 0
+    if photos_dir.exists():
+        deleted = sum(1 for entry in photos_dir.iterdir() if entry.is_file())
+        shutil.rmtree(photos_dir, ignore_errors=True)
+    return deleted
+
+
+def _list_photos(setup_id: str, camera_id: str | None) -> list[dict]:
+    folder = PHOTOS_DIR / setup_id
+    if not folder.exists():
+        return []
+    pattern = re.compile(rf"^{re.escape(setup_id)}_(\d+)\.jpg$", re.IGNORECASE)
+    photos: list[dict] = []
+    for entry in folder.iterdir():
+        if not entry.is_file():
+            continue
+        match = pattern.match(entry.name)
+        if not match:
+            continue
+        ts = int(match.group(1))
+        photos.append(
+            {
+                "id": ts,
+                "setup_id": setup_id,
+                "camera_id": camera_id or "",
+                "ts": ts,
+                "path": f"/data/photos/{setup_id}/{entry.name}",
+            }
+        )
+    return sorted(photos, key=lambda item: item["ts"])

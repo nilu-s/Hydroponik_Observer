@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import random
 import time
 from dataclasses import dataclass
 from threading import Lock
@@ -30,22 +29,22 @@ from .db import (
     get_setup,
     mark_nodes_offline,
     upsert_node,
+    update_node_mode,
 )
 
 
 @dataclass
 class NodeHello:
-    node_id: str
     fw: Optional[str]
     cap: Optional[dict[str, Any]]
     calib_hash: Optional[str]
-    usb_name: Optional[str]
 
 
 class NodeClient:
-    def __init__(self, port: str, hello: NodeHello) -> None:
+    def __init__(self, port: str, hello: NodeHello, node_key: str) -> None:
         self.port = port
         self.hello = hello
+        self.node_key = node_key
         self._lock = Lock()
         self._serial = serial.Serial(
             port=self.port,
@@ -70,7 +69,7 @@ class NodeClient:
         return data
 
     def sync_calibration(self) -> None:
-        calib = get_calibration(self.hello.node_id)
+        calib = get_calibration(self.node_key)
         if not calib:
             return
         if calib["calib_hash"] == self.hello.calib_hash:
@@ -104,6 +103,10 @@ class NodeClient:
             except (TimeoutError, serial.SerialException, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 last_exc = exc
                 if attempt + 1 >= NODE_RETRY_ATTEMPTS:
+                    try:
+                        self._serial.close()
+                    except Exception:
+                        pass
                     raise
                 time.sleep(NODE_RETRY_BACKOFF_BASE_SEC * (2**attempt))
         raise last_exc if last_exc else RuntimeError("serial command failed")
@@ -167,6 +170,15 @@ def _remove_node_client(node_id: str) -> None:
     NODE_PORTS.pop(node_id, None)
 
 
+def remove_node_client(node_id: str) -> None:
+    _remove_node_client(node_id)
+
+
+def reset_runtime() -> None:
+    for node_id in list(NODE_CLIENTS.keys()):
+        _remove_node_client(node_id)
+
+
 def _ensure_client_healthy(node_id: str, client: NodeClient) -> bool:
     if client.is_healthy():
         return True
@@ -177,28 +189,20 @@ def _ensure_client_healthy(node_id: str, client: NodeClient) -> bool:
 def _parse_node_hello(data: dict[str, Any], expected_type: str) -> NodeHello:
     if data.get("t") != expected_type:
         raise RuntimeError("unexpected hello type")
-    node_id = data.get("nodeId")
-    if not node_id:
-        raise RuntimeError("missing nodeId")
     return NodeHello(
-        node_id=node_id,
         fw=data.get("fw"),
         cap=data.get("cap"),
         calib_hash=data.get("calibHash"),
-        usb_name=data.get("usbName"),
     )
 
 
 def _send_hello_ack(ser: serial.Serial, hello: NodeHello) -> None:
     payload = {
         "t": "hello_ack",
-        "nodeId": hello.node_id,
         "fw": hello.fw,
         "cap": hello.cap,
         "calibHash": hello.calib_hash,
     }
-    if hello.usb_name:
-        payload["usbName"] = hello.usb_name
     ser.write(json.dumps(payload).encode("utf-8") + b"\n")
 
 
@@ -233,28 +237,38 @@ def _handshake(port: str) -> NodeHello:
 
 def _scan_nodes_once() -> set[str]:
     active_ids: set[str] = set()
+    busy_ports: set[str] = set()
+    for node_id, client in list(NODE_CLIENTS.items()):
+        if _ensure_client_healthy(node_id, client):
+            active_ids.add(node_id)
+            busy_ports.add(client.port)
     ports = [port.device for port in list_ports.comports()]
     if not ports:
         log_event("nodes.scan_empty", ports=ports)
     for port in ports:
+        if port in busy_ports:
+            continue
         try:
             hello = _handshake(port)
-            if not hello.node_id:
-                continue
-            log_event("nodes.scan_success", port=port, node_id=hello.node_id)
-            print(f"nodes.scan_success: port={port} node_id={hello.node_id}")
-            active_ids.add(hello.node_id)
-            existing = NODE_CLIENTS.get(hello.node_id)
-            if not existing or NODE_PORTS.get(hello.node_id) != port:
+            node_key = port
+            log_event(
+                "nodes.scan_success",
+                port=port,
+                node_key=node_key,
+            )
+            print(f"nodes.scan_success: port={port} key={node_key}")
+            active_ids.add(node_key)
+            existing = NODE_CLIENTS.get(node_key)
+            if not existing or NODE_PORTS.get(node_key) != port:
                 if existing:
-                    _remove_node_client(hello.node_id)
-                NODE_CLIENTS[hello.node_id] = NodeClient(port, hello)
-                NODE_PORTS[hello.node_id] = port
-            NODE_CLIENTS[hello.node_id].hello = hello
-            existing_node = get_node(hello.node_id)
-            name_hint = None if existing_node and existing_node.get("name") else hello.node_id
+                    _remove_node_client(node_key)
+                NODE_CLIENTS[node_key] = NodeClient(port, hello, node_key)
+                NODE_PORTS[node_key] = port
+            NODE_CLIENTS[node_key].hello = hello
+            existing_node = get_node(node_key)
+            name_hint = None if existing_node and existing_node.get("name") else node_key
             upsert_node(
-                node_id=hello.node_id,
+                node_id=node_key,
                 name=name_hint,
                 kind="real",
                 fw=hello.fw,
@@ -263,28 +277,12 @@ def _scan_nodes_once() -> set[str]:
                 status="online",
                 last_error=None,
             )
-            if existing_node and existing_node.get("name") and existing_node.get("name") != hello.usb_name:
-                try:
-                    NODE_CLIENTS[hello.node_id].send_command(
-                        {"t": "set_usb_name", "name": existing_node.get("name")},
-                        expect_response=True,
-                    )
-                    log_event(
-                        "nodes.usb_name_sync",
-                        node_id=hello.node_id,
-                        name=existing_node.get("name"),
-                    )
-                except Exception as exc:
-                    log_event(
-                        "nodes.usb_name_sync_failed",
-                        node_id=hello.node_id,
-                        error=str(exc),
-                    )
+            _refresh_node_mode(node_key)
             try:
-                NODE_CLIENTS[hello.node_id].sync_calibration()
+                NODE_CLIENTS[node_key].sync_calibration()
             except Exception as exc:
                 upsert_node(
-                    node_id=hello.node_id,
+                    node_id=node_key,
                     name=name_hint,
                     kind="real",
                     fw=hello.fw,
@@ -306,46 +304,36 @@ async def node_discovery_loop() -> None:
         await asyncio.sleep(NODE_SCAN_INTERVAL_SEC)
 
 
-_DUMMY_STATE: dict[str, dict[str, float]] = {}
-
-
-def _init_dummy_state(state_key: str) -> None:
-    _DUMMY_STATE[state_key] = {
-        "ph": random.uniform(5.8, 6.4),
-        "ec": random.uniform(1.2, 1.8),
-        "temp": random.uniform(18.0, 22.0),
-    }
-
-
-def get_dummy_reading(state_key: str) -> dict[str, Any]:
-    if state_key not in _DUMMY_STATE:
-        _init_dummy_state(state_key)
-    state = _DUMMY_STATE[state_key]
-    state["ph"] = max(4.5, min(7.5, state["ph"] + random.uniform(-0.03, 0.03)))
-    state["ec"] = max(0.6, min(2.6, state["ec"] + random.uniform(-0.05, 0.05)))
-    state["temp"] = max(12.0, min(28.0, state["temp"] + random.uniform(-0.1, 0.1)))
-    return {
-        "t": "all",
-        "ts": _now_ms(),
-        "ph": round(state["ph"], 2),
-        "ec": round(state["ec"], 2),
-        "temp": round(state["temp"], 2),
-        "status": ["ok"],
-    }
-
 
 async def _request_node_reading(setup_id: str, node_id: Optional[str]) -> dict[str, Any]:
     if not node_id:
         raise HTTPException(status_code=409, detail="no node assigned")
-    if node_id == "DUMMY":
-        return get_dummy_reading(setup_id)
     client = get_node_client(node_id)
     if not client:
         raise HTTPException(status_code=503, detail="node offline")
     try:
-        return await asyncio.to_thread(client.request_all)
+        data = await asyncio.to_thread(client.request_all)
+        mode = data.get("mode")
+        if mode in ("real", "debug"):
+            update_node_mode(node_id, mode)
+        data["ts"] = _now_ms()
+        return data
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"node error: {exc}")
+
+
+def _refresh_node_mode(node_id: str) -> None:
+    client = get_node_client(node_id)
+    if not client:
+        return
+    try:
+        data = client.request_all()
+    except Exception as exc:
+        log_event("nodes.mode_failed", port=client.port, error=str(exc))
+        return
+    mode = data.get("mode")
+    if mode in ("real", "debug"):
+        update_node_mode(node_id, mode)
 
 
 async def fetch_setup_reading(setup_id: str) -> tuple[str, dict[str, Any]]:
@@ -360,16 +348,4 @@ async def fetch_setup_reading(setup_id: str) -> tuple[str, dict[str, Any]]:
 async def fetch_node_reading(setup_id: str, node_id: Optional[str]) -> dict[str, Any]:
     return await _request_node_reading(setup_id, node_id)
 
-
-def ensure_dummy_node() -> None:
-    upsert_node(
-        node_id="DUMMY",
-        name=None,
-        kind="dummy",
-        fw=None,
-        cap_json=None,
-        mode=None,
-        status="online",
-        last_error=None,
-    )
 

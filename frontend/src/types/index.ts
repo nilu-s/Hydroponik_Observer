@@ -1,15 +1,15 @@
 export type Setup = {
   setupId: string;
   name: string;
-  nodeId: string | null;
-  cameraId: string | null;
-  valueIntervalSec: number;
-  photoIntervalSec: number;
+  port: string | null;
+  cameraPort: string | null;
+  valueIntervalMinutes: number;
+  photoIntervalMinutes: number;
 };
 
 export type NodeInfo = {
-  nodeId: string;
-  name?: string;
+  port: string;
+  alias?: string;
   kind: "real" | "dummy";
   status: "online" | "offline" | "unknown";
   fw?: string;
@@ -19,6 +19,7 @@ export type NodeInfo = {
 export type CameraDevice = {
   cameraId: string;
   deviceId: string;
+  alias?: string;
   pnpDeviceId?: string;
   containerId?: string;
   friendlyName?: string;
@@ -60,4 +61,5 @@ export type WsServerMsg =
   | ({ t: "reading"; setupId: string } & Reading)
   | { t: "cameraDevices"; devices: CameraDevice[] }
   | { t: "device"; setupId: string; node?: string; camera?: string }
+  | { t: "reset"; reason?: string }
   | { t: "error"; setupId?: string; msg: string };

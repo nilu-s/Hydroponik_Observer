@@ -15,7 +15,7 @@
     "version": "1.0.0",
     "restore": {
       "projectUniqueName": "C:\\Studium\\BA Hydroponik\\SensorHUB\\backend\\worker\\CameraWorker.csproj",
-      "projectName": "camera_worker",
+      "projectName": "CameraWorker",
       "projectPath": "C:\\Studium\\BA Hydroponik\\SensorHUB\\backend\\worker\\CameraWorker.csproj",
       "packagesPath": "C:\\Users\\luisn\\.nuget\\packages\\",
       "outputPath": "C:\\Studium\\BA Hydroponik\\SensorHUB\\backend\\worker\\obj\\",

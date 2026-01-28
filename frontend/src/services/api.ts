@@ -47,30 +47,27 @@ export const getNodes = async (): Promise<NodeInfo[]> => {
   return handleResponse<NodeInfo[]>(res);
 };
 
-export const deleteNode = async (nodeId: string): Promise<void> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${nodeId}`, {
+export const deleteNode = async (port: string): Promise<void> => {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}`, {
     method: "DELETE",
   });
   await handleResponse(res);
 };
 
-export const updateNodeName = async (
-  nodeId: string,
-  name: string
-): Promise<NodeInfo> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${nodeId}`, {
+export const updateNodeAlias = async (port: string, alias: string): Promise<NodeInfo> => {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ alias }),
   });
   return handleResponse<NodeInfo>(res);
 };
 
 export const sendNodeCommand = async (
-  nodeId: string,
+  port: string,
   payload: Record<string, unknown>
 ): Promise<Record<string, unknown>> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${nodeId}/command`, {
+  const res = await fetch(`${getBackendBaseUrl()}/api/nodes/${port}/command`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -78,18 +75,15 @@ export const sendNodeCommand = async (
   return handleResponse<Record<string, unknown>>(res);
 };
 
-export const setNodeMode = async (
-  nodeId: string,
-  mode: "real" | "debug"
-): Promise<void> => {
-  await sendNodeCommand(nodeId, { t: "set_mode", mode });
+export const setNodeMode = async (port: string, mode: "real" | "debug"): Promise<void> => {
+  await sendNodeCommand(port, { t: "set_mode", mode });
 };
 
 export const setNodeSim = async (
-  nodeId: string,
+  port: string,
   payload: { ph?: number; ec?: number; temp?: number }
 ): Promise<void> => {
-  await sendNodeCommand(nodeId, {
+  await sendNodeCommand(port, {
     t: "set_sim",
     simPh: payload.ph,
     simEc: payload.ec,
@@ -97,10 +91,8 @@ export const setNodeSim = async (
   });
 };
 
-export const requestNodeReading = async (
-  nodeId: string
-): Promise<Record<string, unknown>> => {
-  return sendNodeCommand(nodeId, { t: "get_all" });
+export const requestNodeReading = async (port: string): Promise<Record<string, unknown>> => {
+  return sendNodeCommand(port, { t: "get_all" });
 };
 
 export const getCameraDevices = async (): Promise<CameraDevice[]> => {
@@ -109,10 +101,28 @@ export const getCameraDevices = async (): Promise<CameraDevice[]> => {
 };
 
 export const deleteCamera = async (cameraId: string): Promise<void> => {
-  const res = await fetch(`${getBackendBaseUrl()}/api/cameras/${cameraId}`, {
+  const res = await fetch(
+    `${getBackendBaseUrl()}/api/cameras/${encodeURIComponent(cameraId)}`,
+    {
     method: "DELETE",
-  });
+    }
+  );
   await handleResponse(res);
+};
+
+export const updateCameraAlias = async (
+  cameraId: string,
+  alias: string | null
+): Promise<CameraDevice> => {
+  const res = await fetch(
+    `${getBackendBaseUrl()}/api/cameras/${encodeURIComponent(cameraId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias }),
+    }
+  );
+  return handleResponse<CameraDevice>(res);
 };
 
 export const getReading = async (setupId: string): Promise<Reading | null> => {

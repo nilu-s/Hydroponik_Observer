@@ -4,14 +4,14 @@ import { getBackendBaseUrl } from "../../services/backend-url";
 
 type Props = {
   setupId: string;
-  cameraId: string | null;
+  cameraPort: string | null;
   cameraStatus?: "online" | "offline";
   compact?: boolean;
 };
 
 const CameraPreview = ({
   setupId,
-  cameraId,
+  cameraPort,
   cameraStatus,
   compact = false,
 }: Props) => {
@@ -32,10 +32,10 @@ const CameraPreview = ({
       window.clearTimeout(retryTimer.current);
       retryTimer.current = null;
     }
-  }, [setupId, cameraId]);
+  }, [setupId, cameraPort]);
 
   useEffect(() => {
-    if (!cameraId) {
+    if (!cameraPort) {
       return;
     }
     if (cameraStatus === "offline") {
@@ -52,9 +52,9 @@ const CameraPreview = ({
     setIsRetrying(false);
     setIsLoading(true);
     setRetryToken((prev) => prev + 1);
-  }, [cameraId, cameraStatus]);
+  }, [cameraPort, cameraStatus]);
 
-  if (!cameraId) {
+  if (!cameraPort) {
     return (
       <div className="section">
         <div className="section-title">Live camera</div>
@@ -65,8 +65,9 @@ const CameraPreview = ({
 
   const streamSrc = useMemo(() => {
     const nonce = Date.now() + retryToken;
-    return `${getBackendBaseUrl()}/api/setups/${setupId}/camera/stream?ts=${nonce}`;
-  }, [setupId, retryToken]);
+    const cameraParam = cameraPort ? `&camera=${encodeURIComponent(cameraPort)}` : "";
+    return `${getBackendBaseUrl()}/api/setups/${setupId}/camera/stream?ts=${nonce}${cameraParam}`;
+  }, [setupId, retryToken, cameraPort]);
 
   const handleLoad = () => {
     setHasError(false);
@@ -119,7 +120,7 @@ const CameraPreview = ({
           </div>
         )}
         <img
-          key={`${setupId}-${cameraId}-${retryToken}`}
+          key={`${setupId}-${cameraPort}-${retryToken}`}
           className={`camera-img${shouldHideImage ? " is-hidden" : ""}`}
           src={imageSrc}
           alt="Live camera stream"

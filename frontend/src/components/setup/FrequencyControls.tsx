@@ -9,33 +9,31 @@ type Props = {
 
 const FrequencyControls = ({ setup, onPatch }: Props) => {
   const [valueIntervalMinutes, setValueIntervalMinutes] = useState(
-    Math.round(setup.valueIntervalSec / 60)
+    Math.round(setup.valueIntervalMinutes)
   );
   const [photoIntervalMinutes, setPhotoIntervalMinutes] = useState(
-    Math.round(setup.photoIntervalSec / 60)
+    Math.round(setup.photoIntervalMinutes)
   );
   const [isSaving, setIsSaving] = useState(false);
   const lastSavedRef = useRef<{ value: number; photo: number }>({
-    value: Math.round(setup.valueIntervalSec / 60),
-    photo: Math.round(setup.photoIntervalSec / 60),
+    value: Math.round(setup.valueIntervalMinutes),
+    photo: Math.round(setup.photoIntervalMinutes),
   });
 
   useEffect(() => {
-    const nextValue = Math.round(setup.valueIntervalSec / 60);
-    const nextPhoto = Math.round(setup.photoIntervalSec / 60);
+    const nextValue = Math.round(setup.valueIntervalMinutes);
+    const nextPhoto = Math.round(setup.photoIntervalMinutes);
     setValueIntervalMinutes(nextValue);
     setPhotoIntervalMinutes(nextPhoto);
     lastSavedRef.current = { value: nextValue, photo: nextPhoto };
-  }, [setup.valueIntervalSec, setup.photoIntervalSec]);
+  }, [setup.valueIntervalMinutes, setup.photoIntervalMinutes]);
 
   const handleSave = async () => {
     const valueMinutes = Math.max(1, Math.min(1440, Number(valueIntervalMinutes) || 1));
     const photoMinutes = Math.max(1, Math.min(1440, Number(photoIntervalMinutes) || 1));
-    const valueIntervalSec = valueMinutes * 60;
-    const photoIntervalSec = photoMinutes * 60;
     setIsSaving(true);
     try {
-      await onPatch({ valueIntervalSec, photoIntervalSec });
+      await onPatch({ valueIntervalMinutes: valueMinutes, photoIntervalMinutes: photoMinutes });
     } finally {
       setIsSaving(false);
     }

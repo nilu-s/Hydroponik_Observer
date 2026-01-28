@@ -10,12 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("camera_worker")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("CameraWorker")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
 [assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
-[assembly: System.Reflection.AssemblyProductAttribute("camera_worker")]
-[assembly: System.Reflection.AssemblyTitleAttribute("camera_worker")]
+[assembly: System.Reflection.AssemblyProductAttribute("CameraWorker")]
+[assembly: System.Reflection.AssemblyTitleAttribute("CameraWorker")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows10.0.19041.0")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("Windows10.0.19041.0")]

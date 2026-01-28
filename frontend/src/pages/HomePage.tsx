@@ -41,6 +41,10 @@ const HomePage = ({ onOpenSettings }: Props) => {
     }
     if (msg.t === "cameraDevices") {
       setCameraDevices(msg.devices);
+      return;
+    }
+    if (msg.t === "reset") {
+      window.location.reload();
     }
   };
 
@@ -118,21 +122,23 @@ const HomePage = ({ onOpenSettings }: Props) => {
       });
     };
     loadReadings();
+    const interval = window.setInterval(loadReadings, 5000);
+    return () => window.clearInterval(interval);
   }, [setups]);
 
   const handleCreate = async (payload: {
     name: string;
-    nodeId: string;
-    cameraId: string;
-    valueIntervalSec: number;
-    photoIntervalSec: number;
+    port: string | null;
+    cameraPort: string | null;
+    valueIntervalMinutes: number;
+    photoIntervalMinutes: number;
   }) => {
     const created = await createSetup(payload.name);
     const patched = await patchSetup(created.setupId, {
-      nodeId: payload.nodeId,
-      cameraId: payload.cameraId,
-      valueIntervalSec: payload.valueIntervalSec,
-      photoIntervalSec: payload.photoIntervalSec,
+      port: payload.port,
+      cameraPort: payload.cameraPort,
+      valueIntervalMinutes: payload.valueIntervalMinutes,
+      photoIntervalMinutes: payload.photoIntervalMinutes,
     });
     setSetups((prev) => [...prev, patched]);
   };

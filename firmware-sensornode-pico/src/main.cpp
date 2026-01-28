@@ -2,28 +2,7 @@
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
 #include <OneWire.h>
-#if __has_include(<EEPROM.h>)
-#include <EEPROM.h>
-#define HAS_EEPROM 1
-#else
-#define HAS_EEPROM 0
-#endif
 #include <stdio.h>
-#include "hardware/watchdog.h"
-
-#if __has_include(<Adafruit_TinyUSB.h>)
-#include <Adafruit_TinyUSB.h>
-#define HAS_TINYUSB 1
-#else
-#define HAS_TINYUSB 0
-#endif
-
-#if __has_include("pico/unique_id.h")
-#include "pico/unique_id.h"
-#define HAS_PICO_UNIQUE 1
-#else
-#define HAS_PICO_UNIQUE 0
-#endif
 
 static const uint32_t SERIAL_BAUDRATE = 115200;
 static const int PH_PIN = 28;   // ADC2 (GPIO28)
@@ -34,13 +13,8 @@ static const uint32_t SAMPLE_INTERVAL_MS = 250;
 static const uint32_t SMOOTHING_WINDOW_MS = 10000;
 static const size_t MAX_SAMPLES = 64;
 static const uint32_t HELLO_RETRY_INTERVAL_MS = 1200;
-static const uint32_t HELLO_ACK_TIMEOUT_MS = 12000;
-static const size_t USB_NAME_MAX = 32;
-static const size_t EEPROM_SIZE = 96;
-static const uint8_t USB_NAME_MAGIC = 0xA5;
-
+static const uint32_t HELLO_ACK_TIMEOUT_MS = 4000;
 static const char *FW_VERSION = "pico-0.1.0";
-static const char *DEFAULT_NODE_ID = "PICO-01";
 
 struct CalibrationPoint {
   float raw;
@@ -83,8 +57,6 @@ static String inputBuffer;
 static uint32_t lastAnnounceAt = 0;
 static uint32_t lastHelloAckAt = 0;
 static bool nodeConnected = false;
-static String nodeId = DEFAULT_NODE_ID;
-static String usbName = DEFAULT_NODE_ID;
 
 static float clampf(float value, float minVal, float maxVal) {
   if (value < minVal) {
@@ -94,6 +66,20 @@ static float clampf(float value, float minVal, float maxVal) {
     return maxVal;
   }
   return value;
+}
+
+static float advanceTenths(float value, float minVal, float maxVal) {
+  const int minTenths = static_cast<int>(minVal * 10.0f + 0.5f);
+  const int maxTenths = static_cast<int>(maxVal * 10.0f + 0.5f);
+  int currentTenths = static_cast<int>(value * 10.0f + 0.5f);
+  if (currentTenths < minTenths || currentTenths > maxTenths) {
+    currentTenths = minTenths;
+  }
+  int nextTenths = currentTenths + 1;
+  if (nextTenths > maxTenths) {
+    nextTenths = minTenths;
+  }
+  return static_cast<float>(nextTenths) / 10.0f;
 }
 
 static uint32_t fnv1a(const char *data, size_t len) {
@@ -114,68 +100,6 @@ static void setDefaultCalibration() {
   calibration.ecPoints[0] = {0.0f, 0.0f};
   calibration.ecPoints[1] = {3.3f, 5.0f};
   calibration.calibHash = "default";
-}
-
-static bool loadUsbName() {
-#if HAS_EEPROM
-  EEPROM.begin(EEPROM_SIZE);
-  if (EEPROM.read(0) != USB_NAME_MAGIC) {
-    return false;
-  }
-  const uint8_t length = EEPROM.read(1);
-  if (length == 0 || length > USB_NAME_MAX) {
-    return false;
-  }
-  String name;
-  for (uint8_t i = 0; i < length; i++) {
-    name += static_cast<char>(EEPROM.read(2 + i));
-  }
-  if (name.length() == 0) {
-    return false;
-  }
-  usbName = name;
-  return true;
-#else
-  return false;
-#endif
-}
-
-static void saveUsbName(const String &name) {
-#if HAS_EEPROM
-  const uint8_t length = static_cast<uint8_t>(min(name.length(), USB_NAME_MAX));
-  EEPROM.write(0, USB_NAME_MAGIC);
-  EEPROM.write(1, length);
-  for (uint8_t i = 0; i < length; i++) {
-    EEPROM.write(2 + i, static_cast<uint8_t>(name[i]));
-  }
-  EEPROM.commit();
-#else
-  (void)name;
-#endif
-}
-
-static void applyUsbName() {
-#if HAS_TINYUSB
-  TinyUSBDevice.setProductDescriptor(usbName.c_str());
-#endif
-}
-
-static void initNodeId() {
-#if HAS_PICO_UNIQUE
-  pico_unique_board_id_t id;
-  pico_get_unique_board_id(&id);
-  String hex;
-  char buf[3] = {0};
-  for (size_t i = 0; i < PICO_UNIQUE_BOARD_ID_SIZE_BYTES; i++) {
-    snprintf(buf, sizeof(buf), "%02x", id.id[i]);
-    hex += buf;
-  }
-  if (hex.length() > 0) {
-    const int keep = 8;
-    const int start = hex.length() > keep ? hex.length() - keep : 0;
-    nodeId = "RP2040-" + hex.substring(start);
-  }
-#endif
 }
 
 static void markConnected() {
@@ -280,9 +204,9 @@ static void updateSamples(uint32_t now) {
 }
 
 static void resetDebugValues() {
-  debugPh = 6.1f + static_cast<float>(random(0, 40)) / 100.0f;
-  debugEc = 1.4f + static_cast<float>(random(0, 80)) / 100.0f;
-  debugTemp = 20.0f + static_cast<float>(random(0, 30)) / 10.0f;
+  debugPh = 6.0f + static_cast<float>(random(0, 10)) / 10.0f;
+  debugEc = 1.0f + static_cast<float>(random(0, 10)) / 10.0f;
+  debugTemp = 20.0f + static_cast<float>(random(0, 10)) / 10.0f;
   lastDebugUpdate = millis();
 }
 
@@ -291,10 +215,9 @@ static void updateDebugValues(uint32_t now) {
     return;
   }
   lastDebugUpdate = now;
-  debugPh = clampf(debugPh + (static_cast<float>(random(-3, 4)) / 100.0f), 5.6f, 6.8f);
-  debugEc = clampf(debugEc + (static_cast<float>(random(-5, 6)) / 100.0f), 1.0f, 2.4f);
-  debugTemp =
-      clampf(debugTemp + (static_cast<float>(random(-5, 6)) / 10.0f), 18.0f, 25.0f);
+  debugPh = advanceTenths(debugPh, 6.0f, 6.9f);
+  debugEc = advanceTenths(debugEc, 1.0f, 1.9f);
+  debugTemp = advanceTenths(debugTemp, 20.0f, 20.9f);
 }
 
 static void sendJson(const JsonDocument &doc) {
@@ -306,9 +229,7 @@ static void sendHello(const String &rawLine) {
   StaticJsonDocument<384> response;
   response["t"] = "hello";
   response["raw"] = rawLine;
-  response["nodeId"] = nodeId;
   response["fw"] = FW_VERSION;
-  response["usbName"] = usbName;
   JsonObject cap = response.createNestedObject("cap");
   cap["ph"] = true;
   cap["ec"] = true;
@@ -327,9 +248,7 @@ static void handleHello(const String &rawLine) {
   StaticJsonDocument<384> response;
   response["t"] = "hello_ack";
   response["raw"] = rawLine;
-  response["nodeId"] = nodeId;
   response["fw"] = FW_VERSION;
-  response["usbName"] = usbName;
   JsonObject cap = response.createNestedObject("cap");
   cap["ph"] = true;
   cap["ec"] = true;
@@ -394,33 +313,6 @@ static void handleSetSim(JsonObject payload) {
   }
   if (payload.containsKey("temp")) {
     debugTemp = payload["temp"].as<float>();
-  }
-}
-
-static void handleSetUsbName(JsonObject payload) {
-  const char *name = payload["name"];
-  StaticJsonDocument<192> response;
-  response["t"] = "set_usb_name_ack";
-  if (!name || String(name).length() == 0) {
-    response["ok"] = false;
-    response["msg"] = "missing_name";
-    sendJson(response);
-    return;
-  }
-  String nextName = String(name);
-  if (nextName.length() > USB_NAME_MAX) {
-    nextName = nextName.substring(0, USB_NAME_MAX);
-  }
-  usbName = nextName;
-  saveUsbName(usbName);
-  applyUsbName();
-  response["ok"] = true;
-  response["name"] = usbName;
-  sendJson(response);
-  delay(200);
-  watchdog_reboot(0, 0, 0);
-  while (true) {
-    delay(10);
   }
 }
 
@@ -502,10 +394,6 @@ static void handleMessage(const String &line) {
     handleSetSim(doc.as<JsonObject>());
     return;
   }
-  if (String(type) == "set_usb_name") {
-    handleSetUsbName(doc.as<JsonObject>());
-    return;
-  }
   if (String(type) == "set_calib") {
     JsonObject payload = doc["payload"].as<JsonObject>();
     if (!payload.isNull()) {
@@ -525,17 +413,16 @@ static void handleMessage(const String &line) {
 }
 
 void setup() {
-  initNodeId();
-  if (!loadUsbName()) {
-    usbName = nodeId;
-  }
-  applyUsbName();
   Serial.begin(SERIAL_BAUDRATE);
   analogReadResolution(12);
   pinMode(PH_PIN, INPUT);
   pinMode(EC_PIN, INPUT);
   tempSensor.begin();
-  randomSeed(analogRead(EC_PIN));
+  const uint32_t seed =
+      (static_cast<uint32_t>(analogRead(PH_PIN)) << 16) ^
+      static_cast<uint32_t>(analogRead(EC_PIN)) ^
+      static_cast<uint32_t>(micros());
+  randomSeed(seed);
   setDefaultCalibration();
   resetDebugValues();
 }

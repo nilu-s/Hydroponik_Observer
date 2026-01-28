@@ -8,7 +8,8 @@ import {
   getNodes,
   requestNodeReading,
   setNodeMode,
-  updateNodeName,
+  updateCameraAlias,
+  updateNodeAlias,
 } from "../services/api";
 import { CameraDevice, NodeInfo } from "../types";
 
@@ -17,9 +18,14 @@ type Props = {
 };
 
 const SettingsPage = ({ onBack }: Props) => {
+  const normalizeCameraId = (cameraIdValue: string) => {
+    return cameraIdValue.replace(/^fallback:/i, "");
+  };
+
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [cameraDevices, setCameraDevices] = useState<CameraDevice[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedPort, setSelectedPort] = useState<string | null>(null);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [nodeState, setNodeState] = useState<
     Record<
       string,
@@ -28,6 +34,14 @@ const SettingsPage = ({ onBack }: Props) => {
         mode: "real" | "debug";
         status: string;
         isBusy: boolean;
+      }
+    >
+  >({});
+  const [cameraState, setCameraState] = useState<
+    Record<
+      string,
+      {
+        alias: string;
       }
     >
   >({});
@@ -54,17 +68,17 @@ const SettingsPage = ({ onBack }: Props) => {
     setNodeState((prev) => {
       const next = { ...prev };
       nodes.forEach((node) => {
-        if (!next[node.nodeId]) {
-          next[node.nodeId] = {
-            name: node.name ?? node.nodeId,
+        if (!next[node.port]) {
+          next[node.port] = {
+            name: node.alias ?? node.port,
             mode: node.mode ?? "real",
             status: "",
             isBusy: false,
           };
-        } else if (node.name && next[node.nodeId].name === node.nodeId) {
-          next[node.nodeId] = {
-            ...next[node.nodeId],
-            name: node.name,
+        } else if (node.alias && next[node.port].name === node.port) {
+          next[node.port] = {
+            ...next[node.port],
+            name: node.alias,
           };
         }
       });
@@ -72,19 +86,39 @@ const SettingsPage = ({ onBack }: Props) => {
     });
   }, [nodes]);
 
+  useEffect(() => {
+    setCameraState((prev) => {
+      const next = { ...prev };
+      cameraDevices.forEach((camera) => {
+        if (!next[camera.cameraId]) {
+          next[camera.cameraId] = {
+            alias:
+              camera.alias ?? camera.friendlyName ?? normalizeCameraId(camera.cameraId),
+          };
+        } else if (camera.alias && next[camera.cameraId].alias === camera.cameraId) {
+          next[camera.cameraId] = {
+            ...next[camera.cameraId],
+            alias: camera.alias,
+          };
+        }
+      });
+      return next;
+    });
+  }, [cameraDevices]);
+
   const activeNodes = useMemo(
-    () => nodes.filter((node) => node.nodeId !== "DUMMY"),
+    () => nodes.filter((node) => node.port !== "DUMMY"),
     [nodes]
   );
 
   const updateNodeState = (
-    nodeId: string,
+    port: string,
     patch: Partial<(typeof nodeState)[string]>
   ) => {
     setNodeState((prev) => ({
       ...prev,
-      [nodeId]: {
-        ...(prev[nodeId] ?? {
+      [port]: {
+        ...(prev[port] ?? {
           mode: "real",
           status: "",
           isBusy: false,
@@ -118,12 +152,12 @@ const SettingsPage = ({ onBack }: Props) => {
     }
   };
 
-  const handleDeleteNode = async (nodeId: string) => {
-    if (!window.confirm(`Delete node ${nodeId}? This also deletes its photos.`)) {
+  const handleDeleteNode = async (port: string) => {
+    if (!window.confirm(`Delete node ${port}? This also deletes its photos.`)) {
       return;
     }
     try {
-      await deleteNode(nodeId);
+      await deleteNode(port);
       await loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Delete failed";
@@ -144,53 +178,77 @@ const SettingsPage = ({ onBack }: Props) => {
     }
   };
 
-  const handleModeChange = async (nodeId: string, mode: "real" | "debug") => {
-    updateNodeState(nodeId, { mode, isBusy: true, status: "" });
+  const handleModeChange = async (port: string, mode: "real" | "debug") => {
+    updateNodeState(port, { mode, isBusy: true, status: "" });
     try {
-      await setNodeMode(nodeId, mode);
-      updateNodeState(nodeId, { status: "Mode updated." });
+      await setNodeMode(port, mode);
+      updateNodeState(port, { status: "Mode updated." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Command failed";
-      updateNodeState(nodeId, { status: message });
+      updateNodeState(port, { status: message });
     } finally {
-      updateNodeState(nodeId, { isBusy: false });
+      updateNodeState(port, { isBusy: false });
     }
   };
 
-  const handleReadNow = async (nodeId: string) => {
-    updateNodeState(nodeId, { isBusy: true, status: "" });
+  const handleReadNow = async (port: string) => {
+    updateNodeState(port, { isBusy: true, status: "" });
     try {
-      const response = await requestNodeReading(nodeId);
-      updateNodeState(nodeId, { status: `Reply: ${JSON.stringify(response)}` });
+      const response = await requestNodeReading(port);
+      updateNodeState(port, { status: `Reply: ${JSON.stringify(response)}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Command failed";
-      updateNodeState(nodeId, { status: message });
+      updateNodeState(port, { status: message });
     } finally {
-      updateNodeState(nodeId, { isBusy: false });
+      updateNodeState(port, { isBusy: false });
     }
   };
 
-  const handleRename = async (nodeId: string) => {
-    const current = nodeState[nodeId];
-    if (!current) {
-      return;
-    }
-    updateNodeState(nodeId, { isBusy: true, status: "" });
-    try {
-      await updateNodeName(nodeId, current.name);
-      updateNodeState(nodeId, { status: "Name updated." });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Rename failed";
-      updateNodeState(nodeId, { status: message });
-    } finally {
-      updateNodeState(nodeId, { isBusy: false });
-    }
-  };
-
-  const selectedNode = selectedNodeId
-    ? activeNodes.find((item) => item.nodeId === selectedNodeId) ?? null
+  const selectedNode = selectedPort
+    ? activeNodes.find((item) => item.port === selectedPort) ?? null
     : null;
-  const selectedState = selectedNodeId ? nodeState[selectedNodeId] ?? null : null;
+  const selectedState = selectedPort ? nodeState[selectedPort] ?? null : null;
+  const selectedAlias =
+    selectedNode && selectedState ? selectedNode.alias ?? selectedNode.port : null;
+  const selectedCamera = selectedCameraId
+    ? cameraDevices.find((item) => item.cameraId === selectedCameraId) ?? null
+    : null;
+  const selectedCameraState = selectedCameraId ? cameraState[selectedCameraId] ?? null : null;
+  const selectedCameraAlias = selectedCamera
+    ? selectedCamera.alias ??
+      selectedCamera.friendlyName ??
+      normalizeCameraId(selectedCamera.cameraId)
+    : null;
+
+  const handleCloseModal = async () => {
+    if (selectedNode && selectedState && selectedAlias !== null) {
+      const trimmed = selectedState.name.trim();
+      const nextAlias = trimmed.length ? trimmed : selectedNode.port;
+      if (nextAlias !== selectedAlias) {
+        try {
+          await updateNodeAlias(selectedNode.port, nextAlias);
+        } catch {
+          // Ignore save errors on close to avoid blocking UX.
+        }
+      }
+    }
+    setSelectedPort(null);
+  };
+
+  const handleCloseCameraModal = async () => {
+    if (selectedCamera && selectedCameraState && selectedCameraAlias !== null) {
+      const trimmed = selectedCameraState.alias.trim();
+      const nextAlias = trimmed.length ? trimmed : null;
+      if (nextAlias !== selectedCameraAlias) {
+        try {
+          await updateCameraAlias(selectedCamera.cameraId, nextAlias);
+        } catch {
+          // Ignore save errors on close to avoid blocking UX.
+        }
+      }
+    }
+    setSelectedCameraId(null);
+  };
 
   return (
     <div className="page">
@@ -216,14 +274,14 @@ const SettingsPage = ({ onBack }: Props) => {
           <div className="device-grid is-compact">
             {activeNodes.map((node) => (
               <button
-                key={node.nodeId}
+                key={node.port}
                 type="button"
                 className={`tile device-tile is-compact${
-                  selectedNodeId === node.nodeId ? " is-active" : ""
+                  selectedPort === node.port ? " is-active" : ""
                 } node-tile`}
-                onClick={() => setSelectedNodeId(node.nodeId)}
+                onClick={() => setSelectedPort(node.port)}
               >
-                <div className="device-title">{node.name ?? node.nodeId}</div>
+                <div className="device-title">{node.alias ?? node.port}</div>
                 <div className="hint">
                   {node.status} · {node.mode ?? "unknown"}
                 </div>
@@ -237,13 +295,36 @@ const SettingsPage = ({ onBack }: Props) => {
           <div className="device-grid">
             {cameraDevices.length === 0 && <div className="hint">No cameras found.</div>}
             {cameraDevices.map((camera) => (
-              <div key={camera.cameraId} className="tile device-tile">
-                <div className="device-title">{camera.friendlyName || camera.cameraId}</div>
-                <div className="hint">{camera.status ?? "offline"}</div>
+              <div
+                key={camera.cameraId}
+                role="button"
+                tabIndex={0}
+                className={`tile device-tile${
+                  selectedCameraId === camera.cameraId ? " is-active" : ""
+                }`}
+                onClick={() => setSelectedCameraId(camera.cameraId)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    setSelectedCameraId(camera.cameraId);
+                  }
+                }}
+              >
+                <div className="device-title">
+                  {camera.alias ||
+                    camera.friendlyName ||
+                    normalizeCameraId(camera.cameraId)}
+                </div>
+                <div className="hint">
+                  {camera.friendlyName ? `${camera.friendlyName} · ` : ""}
+                  {camera.status ?? "offline"}
+                </div>
                 <div className="device-actions">
                   <button
                     className="button small danger"
-                    onClick={() => handleDeleteCamera(camera.cameraId)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDeleteCamera(camera.cameraId);
+                    }}
                   >
                     Delete
                   </button>
@@ -255,7 +336,7 @@ const SettingsPage = ({ onBack }: Props) => {
       </div>
 
       {selectedNode && selectedState && (
-        <div className="modal-overlay" onClick={() => setSelectedNodeId(null)}>
+        <div className="modal-overlay">
           <div
             className="modal modal-node"
             onClick={(event) => event.stopPropagation()}
@@ -268,34 +349,22 @@ const SettingsPage = ({ onBack }: Props) => {
                   {selectedNode.mode ?? "unknown"}
                 </div>
               </div>
-              <button className="button small" onClick={() => setSelectedNodeId(null)}>
+              <button className="button small" onClick={handleCloseModal}>
                 Close
               </button>
             </div>
             <div className="modal-divider" />
             <div className="row grid-two">
               <div className="field">
-                <label className="label">Name</label>
+                <label className="label">Alias</label>
                 <input
                   className="input compact"
                   value={selectedState.name}
                   onChange={(event) =>
-                    updateNodeState(selectedNode.nodeId, { name: event.target.value })
+                    updateNodeState(selectedNode.port, { name: event.target.value })
                   }
-                  placeholder={selectedNode.nodeId}
+                  placeholder={selectedNode.port}
                 />
-              </div>
-              <div className="field">
-                <label className="label">Name Action</label>
-                <div className="row compact">
-                  <button
-                    className="button small"
-                    onClick={() => handleRename(selectedNode.nodeId)}
-                    disabled={selectedState.isBusy}
-                  >
-                    Save name
-                  </button>
-                </div>
               </div>
             </div>
             <div className="row grid-two">
@@ -306,7 +375,7 @@ const SettingsPage = ({ onBack }: Props) => {
                   value={selectedState.mode}
                   onChange={(event) =>
                     handleModeChange(
-                      selectedNode.nodeId,
+                      selectedNode.port,
                       event.target.value as "real" | "debug"
                     )
                   }
@@ -320,7 +389,7 @@ const SettingsPage = ({ onBack }: Props) => {
                 <div className="row compact">
                   <button
                     className="button small"
-                    onClick={() => handleReadNow(selectedNode.nodeId)}
+                    onClick={() => handleReadNow(selectedNode.port)}
                     disabled={selectedState.isBusy}
                   >
                     Read now
@@ -332,10 +401,51 @@ const SettingsPage = ({ onBack }: Props) => {
             <div className="modal-actions modal-footer">
               <button
                 className="button small danger"
-                onClick={() => handleDeleteNode(selectedNode.nodeId)}
+                onClick={() => handleDeleteNode(selectedNode.port)}
               >
                 Delete node
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCamera && selectedCameraState && (
+        <div className="modal-overlay">
+          <div
+            className="modal modal-node"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Camera details</div>
+                <div className="modal-subtitle">{selectedCamera.status ?? "offline"}</div>
+              </div>
+              <button className="button small" onClick={handleCloseCameraModal}>
+                Close
+              </button>
+            </div>
+            <div className="modal-divider" />
+            <div className="row grid-two">
+              <div className="field">
+                <label className="label">Alias</label>
+                <input
+                  className="input compact"
+                  value={selectedCameraState.alias}
+                  onChange={(event) =>
+                    setCameraState((prev) => ({
+                      ...prev,
+                      [selectedCamera.cameraId]: {
+                        ...(prev[selectedCamera.cameraId] ?? {
+                          alias: selectedCamera.alias ?? selectedCamera.cameraId,
+                        }),
+                        alias: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder={normalizeCameraId(selectedCamera.cameraId)}
+                />
+              </div>
             </div>
           </div>
         </div>
