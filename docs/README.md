@@ -3,6 +3,9 @@
 Diese Dokumentation strukturiert den aktuellen Systemstand für die Bachelorarbeit. Fokus: Architektur, Datenmodell, Laufzeitverhalten, Protokolle, Designentscheidungen und Grenzen.
 
 ## Inhalt
+- [Systemanforderungen](./requirements.md)
+  - [Customer Requirements](./customer-requirements.md)
+  - [Technical Requirements](./technical-requirements.md)
 - [Architektur](./architecture.md)
 - [REST API](./api.md)
 - [Konfiguration](./config.md)
