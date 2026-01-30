@@ -3,61 +3,61 @@
 ## Struktur (Construction Type Thesis)
 
 Diese Dateien bilden die Kapitelstruktur der Bachelorarbeit gemäß "Construction type of work" Vorgabe:
-**Requirements → Design → Implementation → Test → Discussion**
+**Anforderungen → Konzeption/Entwurf → Implementierung → Test/Evaluation → Fazit/Ausblick**
 
 ### Vorspann
 
-- `00-deckblatt.md` - Titelseite
-- `00-zusammenfassung.md` - Zusammenfassung (DE) + Abstract (EN) + Keywords
-- `00-verzeichnisse.md` - Inhalts-, Abbildungs-, Tabellen-, Abkürzungsverzeichnis
+- `00-DECKBLATT.md` - Titelseite
+- `00-ZUSAMMENFASSUNG.md` - Zusammenfassung (DE) + Abstract (EN) + Keywords
+- `00-VERZEICHNISSE.md` - Inhalts-, Abbildungs-, Tabellen-, Abkürzungsverzeichnis
 
 ### Hauptkapitel
 
-- `01-einleitung.md` - **Kapitel 1: Einleitung**
+- `01-EINLEITUNG.md` - **Kapitel 1: Einleitung**
   - Motivation, Problemstellung, Zielsetzung, Abgrenzung, Aufbau
   
-- `02-grundlagen.md` - **Kapitel 2: Grundlagen (Theory)**
+- `02-GRUNDLAGEN.md` - **Kapitel 2: Grundlagen (Theory)**
   - Domänen-Grundlagen (Hydroponik)
   - IoT-/Sensornetz-Grundlagen
   - Web-/Backend-Grundlagen
   - Stand der Technik
 
-- `03-systemanforderungen.md` - **Kapitel 3: Requirements**
+- `03-ANFORDERUNGEN.md` - **Kapitel 3: Anforderungen**
   - Stakeholder & Use-Cases
-  - Customer Requirements (CR) → `03-customer-requirements.md`
-  - Technical Requirements (TR) → `03-technical-requirements.md`
+  - Kundenanforderungen (CR) → `03-KUNDENANFORDERUNGEN.md`
+  - Technische Anforderungen (TR) → `03-TECHNISCHE-ANFORDERUNGEN.md`
   - Nicht-funktionale Anforderungen
   - Randbedingungen
 
-- `04-design.md` - **Kapitel 4: Design**
+- `04-KONZEPTION-ENTWURF.md` - **Kapitel 4: Konzeption und Entwurf**
   - Systemarchitektur (Node-Hub-Modell)
   - Datenmodell (ER-Diagramm, Datenbank-Schema)
   - Kommunikationsprotokolle (Serial, REST, WebSocket)
   - Sicherheitskonzept
 
-- `05-implementierung.md` - **Kapitel 5: Implementation**
+- `05-IMPLEMENTIERUNG.md` - **Kapitel 5: Implementierung**
   - Hardware-Entwicklung (PCB-Design, Sensoren)
   - Firmware-Implementierung (Pico/Arduino)
   - Backend-Implementierung (FastAPI)
   - Frontend-Implementierung (React)
   - Kamera-Integration (C# Worker)
 
-- `06-test-evaluation.md` - **Kapitel 6: Test & Evaluation**
+- `06-TEST-UND-EVALUATION.md` - **Kapitel 6: Test und Evaluation**
   - Teststrategie (Unit/Integration/System)
   - Testszenarien & Ergebnisse
   - Performance-Tests
   - Robustheit-Tests
   - Anforderungs-Erfüllung
 
-- `07-diskussion-ausblick.md` - **Kapitel 7: Discussion & Conclusion**
+- `07-FAZIT-AUSBLICK.md` - **Kapitel 7: Fazit und Ausblick**
   - Wichtige Designentscheidungen
   - Grenzen & Limitierungen
   - Ausblick & Roadmap
 
 ### Nachspann
 
-- `08-literaturverzeichnis.md` - Literaturverzeichnis
-- `09-anhang.md` - Anhang
+- `08-LITERATURVERZEICHNIS.md` - Literaturverzeichnis
+- `09-ANHANG.md` - Anhang
   - API-Dokumentation
   - Schaltpläne & PCB-Layout
   - Konfigurationsdateien
@@ -85,13 +85,13 @@ Diese Dateien bilden die Kapitelstruktur der Bachelorarbeit gemäß "Constructio
 - `08-laufzeitverhalten.md`
 
 **Neu**:
-- `05-implementierung.md` (Hardware + Software + Laufzeitverhalten)
+- `05-IMPLEMENTIERUNG.md` (Hardware + Software + Laufzeitverhalten)
 
 **Alt**:
 - `09-test-evaluation.md` (Platzhalter)
 
 **Neu**:
-- `06-test-evaluation.md` (vollständig ausgearbeitet mit Testergebnissen)
+- `06-TEST-UND-EVALUATION.md` (Testkapitel ausgearbeitet, Tests ausstehend)
 
 ### Begründung
 
@@ -122,13 +122,13 @@ Dies ist die **Standard-Struktur für Software-Entwicklungs-Theses** und macht d
 ```bash
 # Mit Pandoc konvertieren
 pandoc --from markdown --to latex \
-  01-einleitung.md \
-  02-grundlagen.md \
-  03-systemanforderungen.md \
-  04-design.md \
-  05-implementierung.md \
-  06-test-evaluation.md \
-  07-diskussion-ausblick.md \
+  01-EINLEITUNG.md \
+  02-GRUNDLAGEN.md \
+  03-ANFORDERUNGEN.md \
+  04-KONZEPTION-ENTWURF.md \
+  05-IMPLEMENTIERUNG.md \
+  06-TEST-UND-EVALUATION.md \
+  07-FAZIT-AUSBLICK.md \
   -o thesis.tex
 ```
 
@@ -143,11 +143,13 @@ Je nach Hochschul-Anforderungen:
 
 ## Nächste Schritte
 
+Offene TODOs stehen in `../todo.md` und sind **kein** Teil der Bachelorarbeit.
+
 ### Inhaltlich
 
 - [ ] Kapitel 1-2: Platzhalter mit Inhalten füllen
 - [ ] Kapitel 4-5: Diagramme/Schaltpläne einfügen
-- [ ] Kapitel 7: Diskussion vervollständigen
+- [ ] Kapitel 7: Fazit & Ausblick vervollständigen
 - [ ] Literaturverzeichnis: Quellen recherchieren
 - [ ] Anhang: API-Docs + Schaltpläne ergänzen
 

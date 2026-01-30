@@ -1,543 +1,420 @@
 # 5 Implementierung
 
-Dieses Kapitel beschreibt die konkrete Umsetzung des Systems, aufgeteilt in Hardware und Software.
+Dieses Kapitel beschreibt die konkrete Umsetzung des Systems, getrennt nach Hardwarestatus und Softwarekomponenten.
 
 ## 5.1 Hardware-Entwicklung
 
-### 5.1.1 PCB-Design
+Die Hardware befindet sich im Prototypenstadium; die physische PCB ist noch nicht verfügbar. [HARDWARE-NOT-AVAILABLE-YET]
 
-Das System verwendet eine custom PCB (HydroponikPlatine), entwickelt mit **KiCad 9.0**.
-
-#### Hauptkomponenten
-
-| Komponente | Funktion | Spezifikation |
-|------------|----------|---------------|
-| **Raspberry Pi Pico W** | Mikrocontroller | RP2040, Dual-Core ARM Cortex-M0+ @ 133MHz |
-| **TL081** | Operationsverstärker | pH-Signal-Konditionierung |
-| **TC1121COA** | DC/DC Converter | +5V → -5V Inverter für OP-Amp |
-| **DS18B20** | Temperatur-Sensor | OneWire Digital, ±0.5°C |
-| **Screw Terminals** | Sensor-Anschlüsse | pH-Sonde (BNC), EC-Sonde |
-
-#### Schaltplan-Übersicht
-
-**pH-Messkanal:**
-- Eingang: BNC-Anschluss für pH-Elektrode (hochohmig)
-- Verstärkung: TL081 als Non-Inverting Amplifier (Gain=1)
-- ADC: GPIO28 (ADC2) des Pico
-- Spannungsbereich: 0-3.3V → pH 0-14
-
-**EC-Messkanal:**
-- Eingang: Schraubklemme für EC-Sonde
-- Widerstandsteiler: 4.7kΩ + Sonde
-- ADC: GPIO26 (ADC0) des Pico
-- Spannungsbereich: 0-3.3V → EC 0-5 mS/cm
-
-**Temperatur-Messkanal:**
-- Sensor: DS18B20 (OneWire)
-- GPIO: GPIO17
-- Pull-Up: 4.7kΩ
-
-**Stromversorgung:**
-- USB-Eingang: 5V vom Pico
-- Positive Rail: +5V (direkt)
-- Negative Rail: -5V (TC1121COA Inverter)
-- Analog Rail: +3.3V (Pico internal LDO)
-- GND + AGND: Getrennte analog/digital Grounds
-
-#### Layout-Eigenschaften
-
-- **Größe**: A3 (DIN-Format)
-- **Layer**: 2-Layer PCB
-- **Trace-Breite**: 0.25mm (Signal), 0.5mm (Power)
-- **Via-Größe**: 0.8mm Drill, 1.5mm Pad
-
-### 5.1.2 Sensor-Kalibrierung
-
-#### pH-Sensor (3-Punkt-Kalibrierung)
-
-Verwendet Pufferlösungen bei pH 4.0, 7.0 und 10.0:
-
-| Pufferlösung | Erwartete ADC-Spannung | Erwarteter pH |
-|--------------|------------------------|---------------|
-| pH 4.0 | ~0.86V | 4.0 |
-| pH 7.0 | ~1.65V | 7.0 |
-| pH 10.0 | ~2.44V | 10.0 |
-
-**Kalibrierungsablauf:**
-
-1. Elektrode in pH 7.0 Puffer tauchen
-2. Rohwert auslesen (z.B. 1.68V)
-3. Offset berechnen: `offset = 1.65V - 1.68V = -0.03V`
-4. Weitere Puffer messen für Linearitätsprüfung
-
-**Lineare Interpolation:**
-
-Zwischen zwei Kalibrierpunkten $(x_1, y_1)$ und $(x_2, y_2)$:
-
-$$
-y = y_1 + \frac{(y_2 - y_1)}{(x_2 - x_1)} \cdot (x - x_1)
-$$
-
-Wobei $x$ = ADC-Rohwert, $y$ = kalibrierter pH-Wert.
-
-#### EC-Sensor (2-Punkt-Kalibrierung)
-
-Verwendet Standardlösungen bei 0 mS/cm und 2.76 mS/cm (z.B. 1413 µS/cm):
-
-| Lösung | ADC-Spannung | EC |
-|--------|--------------|-----|
-| Destilliertes Wasser | ~0V | 0 mS/cm |
-| 1413 µS/cm Lösung | ~1.5V | 1.413 mS/cm |
-
----
+Die Software ist für Sensor-Nodes auf Basis des Raspberry Pi Pico (RP2040) ausgelegt. Evidence: sensornode-firmware/src/main.cpp :: FW_VERSION :: Firmware-Version "pico-0.1.0".
 
 ## 5.2 Firmware-Implementierung (Sensor-Node)
 
-### 5.2.1 Projekt-Setup
+Die Firmware liest pH-, EC- und Temperaturwerte, wendet Kalibrierung an und stellt Messwerte über ein JSON-Line-Protokoll zur Verfügung. Evidence: sensornode-firmware/src/main.cpp :: handleGetAll/sendJson :: Messwerte werden per Serial JSON ausgegeben.
 
-**Entwicklungsumgebung:**
-- **Framework**: Arduino (mit Pico-Board-Package)
-- **Build-Tool**: PlatformIO
-- **Sprache**: C++ (Arduino-API)
+**ADC und Sensorpins (RP2040):** pH an GPIO28 (ADC2), EC an GPIO26 (ADC0), Temperatur an GPIO17 (OneWire). Evidence: sensornode-firmware/src/main.cpp :: PH_PIN/EC_PIN/TEMP_PIN :: Pin-Zuordnung.
 
-**Wichtige Libraries:**
-- `ArduinoJson` (v7): JSON Parsing/Serialization
-- `OneWire` + `DallasTemperature`: DS18B20 Temperatur-Sensor
-- `hardware/flash.h`: Pico Flash-UID Auslesen
+**Kalibrierung:** pH 3-Punkt, EC 2-Punkt, jeweils stückweise linear. Evidence: sensornode-firmware/src/main.cpp :: applyPhCalibration/applyEcCalibration :: Kalibrierlogik.
 
-### 5.2.2 Hauptkomponenten
+**Smoothing:** Mittelung über ein Zeitfenster mit ringförmigem Sample-Buffer. Evidence: sensornode-firmware/src/main.cpp :: computeSmoothed :: Glättungsfunktion.
 
-#### Sensor-Auslesen
+**Auto-Discovery:** Die Node sendet `hello`-Nachrichten bei Verbindungsverlust. Evidence: sensornode-firmware/src/main.cpp :: HELLO_RETRY_INTERVAL_MS/sendHello :: Hello-Retry.
 
-**ADC-Konfiguration:**
+**Debug-Modus:** Simulierte Werte können per `set_mode` aktiviert werden. Evidence: sensornode-firmware/src/main.cpp :: handleSetMode/updateDebugValues :: Debug-Logik.
 
-```cpp
-static const int PH_PIN = 28;   // ADC2 (GPIO28)
-static const int EC_PIN = 26;   // ADC0 (GPIO26)
-static const int TEMP_PIN = 17; // GPIO17 (OneWire)
+**Abbildung 5.1: Node-Zustandsautomat (vereinfacht)**
 
-void setup() {
-  analogReadResolution(12);  // 12-bit ADC (0-4095)
-  pinMode(PH_PIN, INPUT);
-  pinMode(EC_PIN, INPUT);
-  tempSensor.begin();
-}
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    
+    Disconnected --> HelloSent: Power On
+    HelloSent --> Registered: hello_ack received
+    HelloSent --> HelloSent: Timeout (retry)
+    
+    Registered --> RealMode: Default
+    Registered --> DebugMode: set_mode(debug)
+    
+    RealMode --> Idle: Ready
+    Idle --> Processing: get_all
+    Processing --> Idle: Response sent
+    
+    DebugMode --> WaitingCmd: Ready
+    WaitingCmd --> WaitingCmd: set_values
+    
+    RealMode --> DebugMode: set_mode(debug)
+    DebugMode --> RealMode: set_mode(real)
+    
+    Registered --> Disconnected: Connection Lost
+    Disconnected --> HelloSent: Auto-Retry (5s)
+    
+    style Disconnected fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#000
+    style HelloSent fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style Registered fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style RealMode fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    style DebugMode fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Idle fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style Processing fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style WaitingCmd fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,color:#000
 ```
 
-**Rohwert-Messung:**
-
-```cpp
-static float readPhRaw() {
-  const int raw = analogRead(PH_PIN);
-  return (static_cast<float>(raw) / 4095.0f) * 3.3f;  // → Volt
-}
-```
-
-#### Smoothing (Glättung)
-
-Um Messrauschen zu reduzieren, werden **64 Samples** über ein **10-Sekunden-Fenster** gemittelt:
-
-```cpp
-static const size_t MAX_SAMPLES = 64;
-static const uint32_t SMOOTHING_WINDOW_MS = 10000;
-static const uint32_t SAMPLE_INTERVAL_MS = 250;  // Alle 250ms ein Sample
-
-static Sample computeSmoothed(uint32_t now) {
-  float sumPh = 0.0f, sumEc = 0.0f, sumTemp = 0.0f;
-  size_t count = 0;
-  
-  for (size_t i = 0; i < sampleCount; i++) {
-    const Sample &s = samples[i];
-    if (now - s.ts <= SMOOTHING_WINDOW_MS) {
-      sumPh += s.ph;
-      sumEc += s.ec;
-      sumTemp += s.temp;
-      count++;
-    }
-  }
-  
-  return {
-    now,
-    sumPh / count,
-    sumEc / count,
-    sumTemp / count
-  };
-}
-```
-
-#### Auto-Discovery (Hello-Mechanismus)
-
-Die Node sendet automatisch `hello`-Nachrichten:
-
-- **Beim Start**: Sofort nach `setup()`
-- **Bei Disconnected**: Alle 1.2 Sekunden Retry
-
-```cpp
-static const uint32_t HELLO_RETRY_INTERVAL_MS = 1200;
-static const uint32_t HELLO_ACK_TIMEOUT_MS = 4000;
-
-void loop() {
-  // ... Message-Handling ...
-  
-  const uint32_t now = millis();
-  
-  // Timeout-Check
-  if (nodeConnected && now - lastHelloAckAt > HELLO_ACK_TIMEOUT_MS) {
-    nodeConnected = false;
-  }
-  
-  // Auto-Announce bei Disconnect
-  if (!nodeConnected && now - lastAnnounceAt >= HELLO_RETRY_INTERVAL_MS) {
-    lastAnnounceAt = now;
-    sendHello("probe");
-  }
-}
-```
-
-#### Debug-Modus
-
-Simuliert Messwerte für Tests ohne echte Sensoren:
-
-```cpp
-static NodeMode nodeMode = MODE_REAL;  // oder MODE_DEBUG
-
-static void handleSetMode(JsonObject payload) {
-  const char *mode = payload["mode"];
-  if (mode && String(mode) == "debug") {
-    nodeMode = MODE_DEBUG;
-    resetDebugValues();  // Startwerte setzen
-    return;
-  }
-  nodeMode = MODE_REAL;
-}
-```
-
-**Debug-Werte** werden alle 5 Sekunden inkrementiert (z.B. pH 6.0 → 6.1 → ... → 6.9 → 6.0):
-
-```cpp
-static void updateDebugValues(uint32_t now) {
-  if (now - lastDebugUpdate < 5000) return;
-  
-  lastDebugUpdate = now;
-  debugPh = advanceTenths(debugPh, 6.0f, 6.9f);
-  debugEc = advanceTenths(debugEc, 1.0f, 1.9f);
-  debugTemp = advanceTenths(debugTemp, 20.0f, 20.9f);
-}
-```
-
----
+Der Node-Zustandsautomat zeigt die Hauptzustände: **Disconnected** (rot) → **HelloSent** (gelb) → **Registered** (grün) → **RealMode** (blau) oder **DebugMode** (orange). Im RealMode werden Sensormessungen durchgeführt, im DebugMode können Testwerte gesetzt werden.
 
 ## 5.3 Backend-Implementierung
 
-### 5.3.1 Projekt-Setup
+Das Backend ist eine FastAPI-Anwendung mit SQLite-Persistenz, Hintergrund-Loops und REST/WS-Schnittstellen. Evidence: sensorhub-backend/app/main.py :: FastAPI app + on_startup :: App-Setup und Loop-Start; Evidence: sensorhub-backend/app/db.py :: init_db :: SQLite-Initialisierung.
 
-**Framework & Technologien:**
-- **Web-Framework**: FastAPI 0.115+
-- **Datenbank**: SQLite (via `sqlite3` built-in)
-- **ASGI-Server**: Uvicorn
-- **ORM**: Eigene SQL-Funktionen (kein SQLAlchemy)
+**Node-Discovery:** Serieller Port-Scan identifiziert RP2040-Devices und führt einen Hello-Handshake aus. Evidence: sensorhub-backend/app/nodes.py :: node_discovery_loop/_handshake :: Discovery- und Handshake-Logik.
 
-**Projekt-Struktur:**
+**Readings-Capture:** Periodische Erfassung nach Setup-Intervallen, Speicherung in SQLite. Evidence: sensorhub-backend/app/realtime_updates.py :: readings_capture_loop :: Intervall-Capture.
 
-```
-sensorhub-backend/
-├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI App + Startup
-│   ├── config.py            # Konfiguration
-│   ├── db.py                # Datenbank-Layer
-│   ├── models.py            # Pydantic Models
-│   ├── nodes.py             # Node-Management
-│   ├── scheduler.py         # Loop-Registry
-│   ├── realtime_updates.py  # WebSocket-Manager
-│   ├── camera_devices.py    # Kamera-Discovery
-│   ├── camera_streaming.py  # Foto-Capture
-│   ├── camera_worker_manager.py  # C# Worker Verwaltung
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── admin.py         # Admin-Endpoints
-│   │   ├── nodes.py         # Node-Endpoints
-│   │   ├── setups.py        # Setup-Endpoints
-│   │   └── cameras.py       # Kamera-Endpoints
-│   └── utils/
-│       ├── csv_export.py
-│       ├── datetime_utils.py
-│       └── paths.py
-├── requirements.txt
-└── tests/
-```
+**WebSocket Live-Updates:** Pro Setup wird ein Polling-Task gestartet, der Live-Readings sendet. Evidence: sensorhub-backend/app/realtime_updates.py :: LiveManager._poll_setup :: Live-Streaming.
 
-### 5.3.2 Node-Discovery Loop
+**Abbildung 5.2: Backend-Datenfluss (vereinfacht)**
 
-Automatisches Erkennen neuer Nodes über serielle Schnittstellen:
-
-```python
-async def node_discovery_loop():
-    while True:
-        ports = list_serial_ports()  # pyserial
-        
-        for port in ports:
-            port_name = port["port"]
-            
-            # Node bereits bekannt?
-            if get_node_client(port_name):
-                continue
-            
-            # Versuche Node zu öffnen
-            try:
-                client = SerialNodeClient(port_name)
-                if client.probe_hello():
-                    register_node_client(client)
-                    log_event("node.discovered", node_id=client.node_id)
-            except Exception as e:
-                log_event("node.discovery_failed", port=port_name, error=str(e))
-        
-        await asyncio.sleep(2)  # Alle 2 Sekunden scannen
-```
-
-### 5.3.3 Readings-Capture Loop
-
-Zyklisches Erfassen von Messwerten basierend auf Setup-Intervallen:
-
-```python
-async def readings_capture_loop():
-    while True:
-        setups = list_setups()
-        
-        for setup in setups:
-            interval = setup["value_interval_minutes"]
-            last_reading = get_last_reading(setup["setup_id"])
-            
-            if should_capture(last_reading, interval):
-                try:
-                    node_id, reading = await fetch_setup_reading(setup["setup_id"])
-                    insert_reading(
-                        setup_id=setup["setup_id"],
-                        node_id=node_id,
-                        ts=reading["ts"],
-                        ph=reading["ph"],
-                        ec=reading["ec"],
-                        temp=reading["temp"],
-                        status=reading["status"]
-                    )
-                except Exception as e:
-                    log_event("reading.capture_failed", setup_id=setup["setup_id"], error=str(e))
-        
-        await asyncio.sleep(10)
-```
-
-### 5.3.4 WebSocket Live-Updates
-
-```python
-class LiveManager:
-    def __init__(self):
-        self.subscriptions: dict[str, set[WebSocket]] = defaultdict(set)
+```mermaid
+flowchart LR
+    Nodes["Sensor Nodes"]
+    Camera["USB Camera"]
+    Frontend["Frontend"]
     
-    async def subscribe(self, setup_id: str, ws: WebSocket):
-        self.subscriptions[setup_id].add(ws)
+    Discovery["Discovery<br/>Loop"]
+    NodeClient["Node<br/>Client"]
+    CamMgr["Camera<br/>Manager"]
+    RealtimeLoop["Realtime<br/>Loop"]
+    API["REST<br/>API"]
+    WS["Web-<br/>Socket"]
     
-    async def broadcast_reading(self, setup_id: str, reading: dict):
-        sockets = self.subscriptions.get(setup_id, set())
-        
-        for ws in sockets:
-            try:
-                await ws.send_json({
-                    "t": "reading",
-                    "setupId": setup_id,
-                    **reading
-                })
-            except Exception:
-                await self.remove_ws(ws)
+    DB[("Database")]
+    Files["Files"]
+    
+    Nodes -->|Serial/JSON| NodeClient
+    Camera -->|USB| CamMgr
+    Frontend -->|HTTP| API
+    Frontend -->|WS| WS
+    
+    Discovery -.-> NodeClient
+    Discovery -.-> CamMgr
+    
+    NodeClient --> RealtimeLoop
+    CamMgr --> RealtimeLoop
+    
+    RealtimeLoop --> DB
+    RealtimeLoop --> Files
+    RealtimeLoop --> WS
+    
+    API --> DB
+    API --> Files
+    
+    style Nodes fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000
+    style Camera fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Frontend fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    
+    style Discovery fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style NodeClient fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style CamMgr fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style RealtimeLoop fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style API fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style WS fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    
+    style DB fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
+    style Files fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
 ```
 
----
+Der Backend-Datenfluss zeigt die Hauptkomponenten: **Discovery Loop** (gelb) erkennt neue Nodes/Kameras. **Node Client** (grün) kommuniziert mit Sensor-Nodes. **Realtime Loop** (gelb) erfasst Messwerte und pusht sie via **WebSocket**. Die **REST API** (grün) ermöglicht Zugriff auf historische Daten aus der **Database** (indigo).
 
 ## 5.4 Frontend-Implementierung
 
-### 5.4.1 Projekt-Setup
-
-**Framework & Tools:**
-- **Framework**: React 18
-- **Build-Tool**: Vite
-- **Sprache**: TypeScript
-- **Styling**: CSS (kein Framework)
-
-**Projekt-Struktur:**
-
-```
-sensorhub-frontend/
-├── src/
-│   ├── main.tsx             # Entry Point
-│   ├── styles.css           # Global Styles
-│   ├── types/
-│   │   └── index.ts         # TypeScript Types
-│   ├── services/
-│   │   ├── api.ts           # REST API Client
-│   │   ├── ws.ts            # WebSocket Client
-│   │   └── backend-url.ts   # Config
-│   ├── pages/
-│   │   ├── HomePage.tsx     # Dashboard
-│   │   └── SettingsPage.tsx # Settings
-│   └── components/
-│       ├── setup/
-│       │   ├── SetupCard.tsx
-│       │   ├── CreateSetupForm.tsx
-│       │   └── HistoryChart.tsx
-│       └── node/
-│           └── NodeCard.tsx
-├── index.html
-├── package.json
-└── vite.config.ts
-```
-
-### 5.4.2 WebSocket-Integration
-
-```typescript
-export class LiveWsClient {
-  private ws: WebSocket | null = null;
-  
-  constructor(
-    private onMessage: (msg: WsServerMsg) => void,
-    private onStatusChange: (status: "connected" | "disconnected" | "connecting") => void
-  ) {}
-  
-  connect() {
-    this.onStatusChange("connecting");
-    this.ws = new WebSocket(`ws://${BACKEND_URL}/api/live`);
-    
-    this.ws.onopen = () => {
-      this.onStatusChange("connected");
-    };
-    
-    this.ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      this.onMessage(msg);
-    };
-    
-    this.ws.onerror = () => {
-      this.onStatusChange("disconnected");
-    };
-  }
-  
-  subscribe(setupId: string) {
-    this.ws?.send(JSON.stringify({ t: "sub", setupId }));
-  }
-  
-  unsubscribe(setupId: string) {
-    this.ws?.send(JSON.stringify({ t: "unsub", setupId }));
-  }
-}
-```
-
-### 5.4.3 Live-Visualisierung
-
-```typescript
-const HomePage = () => {
-  const [liveReadings, setLiveReadings] = useState<Record<string, Reading>>({});
-  
-  const handleWsMsg = (msg: WsServerMsg) => {
-    if (msg.t === "reading") {
-      setLiveReadings(prev => ({
-        ...prev,
-        [msg.setupId]: msg
-      }));
-    }
-  };
-  
-  useEffect(() => {
-    const client = new LiveWsClient(handleWsMsg, setWsStatus);
-    client.connect();
-    
-    setups.forEach(setup => {
-      client.subscribe(setup.setupId);
-    });
-    
-    return () => client.close();
-  }, [setups]);
-  
-  // ... Rendering ...
-};
-```
-
----
+Die Web-UI basiert auf React/TypeScript und nutzt einen WebSocket-Client für Live-Updates. Evidence: sensorhub-frontend/src/services/ws.ts :: LiveWsClient :: WebSocket-Client mit Reconnect.
 
 ## 5.5 Kamera-Integration
 
-### 5.5.1 C# Worker für DirectShow
+Die Kamera-Integration erfolgt über einen Windows-C#-Worker, der JPEG-Frames im FRAM-Binärprotokoll an den Hub streamt. Evidence: sensorhub-backend/worker/Program.cs :: WriteFrame :: FRAM-Header + JPEG-Payload; Evidence: sensorhub-backend/app/camera_worker_manager.py :: _read_worker_frame_bytes :: FRAM-Parsing im Backend.
 
-USB-Kameras werden über einen externen **C# Worker** gesteuert (weil Python-Bibliotheken wie `opencv-python` nicht zuverlässig mit Windows DirectShow funktionieren):
-
-**Architektur:**
-- Backend (Python) spawnt C# Worker-Prozess pro Kamera
-- Kommunikation via **stdin/stdout** (JSON-Line-Protocol)
-- Worker captured Fotos und speichert sie direkt
-
-**Worker-Kommandos:**
-
-| Command | Beschreibung |
-|---------|--------------|
-| `snapshot` | Einzelfoto aufnehmen |
-| `start_stream` | Video-Stream starten |
-| `stop_stream` | Video-Stream stoppen |
-| `exit` | Worker beenden |
-
-### 5.5.2 Automatische Foto-Capture
-
-```python
-async def photo_capture_loop():
-    while True:
-        setups = list_setups()
-        
-        for setup in setups:
-            camera_id = setup.get("camera_id")
-            if not camera_id:
-                continue
-            
-            interval = setup["photo_interval_minutes"]
-            last_photo = get_last_photo_time(setup["setup_id"])
-            
-            if should_capture_photo(last_photo, interval):
-                try:
-                    await capture_photo_now(setup["setup_id"])
-                except Exception as e:
-                    log_event("photo.capture_failed", setup_id=setup["setup_id"], error=str(e))
-        
-        await asyncio.sleep(30)  # Alle 30 Sekunden prüfen
-```
-
----
+**Foto-Capture:** Das Backend speichert Fotos zyklisch oder per manueller Auslösung. Evidence: sensorhub-backend/app/camera_streaming.py :: photo_capture_loop/capture_photo_now :: Fotoaufnahme.
 
 ## 5.6 Fehlerbehandlung & Logging
 
-### 5.6.1 Strukturiertes Logging
+Backend-Events werden strukturiert geloggt (z.B. Scan- und Fehlerereignisse). Evidence: sensorhub-backend/app/utils/logging.py :: log_event :: JSON-Logeinträge.
 
-```python
-def log_event(event_type: str, **kwargs):
-    log_entry = {
-        "ts": datetime.utcnow().isoformat(),
-        "event": event_type,
-        **kwargs
-    }
-    print(json.dumps(log_entry), file=sys.stderr)
-```
+Nodes werden bei fehlendem Kontakt als offline markiert. Evidence: sensorhub-backend/app/nodes.py :: mark_nodes_offline :: Offline-Markierung.
+# 5 Implementierung
 
-**Beispiel-Events:**
-- `node.discovered`
-- `node.disconnected`
-- `reading.captured`
-- `photo.captured`
-- `error.sensor_timeout`
+Dieses Kapitel beschreibt die konkrete Umsetzung des Systems, getrennt nach Hardwarestatus und Softwarekomponenten.
 
-### 5.6.2 Node-Timeout-Erkennung
+## 5.1 Hardware-Entwicklung
 
-```python
-HELLO_ACK_TIMEOUT_MS = 4000
+Die Hardware befindet sich im Prototypenstadium; die physische PCB ist noch nicht verfügbar. [HARDWARE-NOT-AVAILABLE-YET]
 
-def check_node_timeouts():
-    now = int(time.time() * 1000)
+Die Software ist für Sensor-Nodes auf Basis des Raspberry Pi Pico (RP2040) ausgelegt. Evidence: sensornode-firmware/src/main.cpp :: FW_VERSION :: Firmware-Version "pico-0.1.0".
+
+## 5.2 Firmware-Implementierung (Sensor-Node)
+
+Die Firmware liest pH-, EC- und Temperaturwerte, wendet Kalibrierung an und stellt Messwerte über ein JSON-Line-Protokoll zur Verfügung. Evidence: sensornode-firmware/src/main.cpp :: handleGetAll/sendJson :: Messwerte werden per Serial JSON ausgegeben.
+
+**ADC und Sensorpins (RP2040):** pH an GPIO28 (ADC2), EC an GPIO26 (ADC0), Temperatur an GPIO17 (OneWire). Evidence: sensornode-firmware/src/main.cpp :: PH_PIN/EC_PIN/TEMP_PIN :: Pin-Zuordnung.
+
+**Kalibrierung:** pH 3-Punkt, EC 2-Punkt, jeweils stückweise linear. Evidence: sensornode-firmware/src/main.cpp :: applyPhCalibration/applyEcCalibration :: Kalibrierlogik.
+
+**Smoothing:** Mittelung über ein Zeitfenster mit ringförmigem Sample-Buffer. Evidence: sensornode-firmware/src/main.cpp :: computeSmoothed :: Glättungsfunktion.
+
+**Auto-Discovery:** Die Node sendet `hello`-Nachrichten bei Verbindungsverlust. Evidence: sensornode-firmware/src/main.cpp :: HELLO_RETRY_INTERVAL_MS/sendHello :: Hello-Retry.
+
+**Debug-Modus:** Simulierte Werte können per `set_mode` aktiviert werden. Evidence: sensornode-firmware/src/main.cpp :: handleSetMode/updateDebugValues :: Debug-Logik.
+
+**Abbildung 5.1: Node-Zustandsautomat (vereinfacht)**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
     
-    for client in list_node_clients():
-        if now - client.last_hello_ack > HELLO_ACK_TIMEOUT_MS:
-            mark_node_offline(client.node_id)
-            log_event("node.timeout", node_id=client.node_id)
+    Disconnected --> HelloSent: Power On
+    HelloSent --> Registered: hello_ack received
+    HelloSent --> HelloSent: Timeout (retry)
+    
+    Registered --> RealMode: Default
+    Registered --> DebugMode: set_mode(debug)
+    
+    RealMode --> Idle: Ready
+    Idle --> Processing: get_all
+    Processing --> Idle: Response sent
+    
+    DebugMode --> WaitingCmd: Ready
+    WaitingCmd --> WaitingCmd: set_values
+    
+    RealMode --> DebugMode: set_mode(debug)
+    DebugMode --> RealMode: set_mode(real)
+    
+    Registered --> Disconnected: Connection Lost
+    Disconnected --> HelloSent: Auto-Retry (5s)
+    
+    style Disconnected fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#000
+    style HelloSent fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style Registered fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style RealMode fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    style DebugMode fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Idle fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style Processing fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style WaitingCmd fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,color:#000
 ```
+
+Der Node-Zustandsautomat zeigt die Hauptzustände: **Disconnected** (rot) → **HelloSent** (gelb) → **Registered** (grün) → **RealMode** (blau) oder **DebugMode** (orange). Im RealMode werden Sensormessungen durchgeführt, im DebugMode können Testwerte gesetzt werden.
+
+## 5.3 Backend-Implementierung
+
+Das Backend ist eine FastAPI-Anwendung mit SQLite-Persistenz, Hintergrund-Loops und REST/WS-Schnittstellen. Evidence: sensorhub-backend/app/main.py :: FastAPI app + on_startup :: App-Setup und Loop-Start; Evidence: sensorhub-backend/app/db.py :: init_db :: SQLite-Initialisierung.
+
+**Node-Discovery:** Serieller Port-Scan identifiziert RP2040-Devices und führt einen Hello-Handshake aus. Evidence: sensorhub-backend/app/nodes.py :: node_discovery_loop/_handshake :: Discovery- und Handshake-Logik.
+
+**Readings-Capture:** Periodische Erfassung nach Setup-Intervallen, Speicherung in SQLite. Evidence: sensorhub-backend/app/realtime_updates.py :: readings_capture_loop :: Intervall-Capture.
+
+**WebSocket Live-Updates:** Pro Setup wird ein Polling-Task gestartet, der Live-Readings sendet. Evidence: sensorhub-backend/app/realtime_updates.py :: LiveManager._poll_setup :: Live-Streaming.
+
+**Abbildung 5.2: Backend-Datenfluss (vereinfacht)**
+
+```mermaid
+flowchart LR
+    Nodes["Sensor Nodes"]
+    Camera["USB Camera"]
+    Frontend["Frontend"]
+    
+    Discovery["Discovery<br/>Loop"]
+    NodeClient["Node<br/>Client"]
+    CamMgr["Camera<br/>Manager"]
+    RealtimeLoop["Realtime<br/>Loop"]
+    API["REST<br/>API"]
+    WS["Web-<br/>Socket"]
+    
+    DB[("Database")]
+    Files["Files"]
+    
+    Nodes -->|Serial/JSON| NodeClient
+    Camera -->|USB| CamMgr
+    Frontend -->|HTTP| API
+    Frontend -->|WS| WS
+    
+    Discovery -.-> NodeClient
+    Discovery -.-> CamMgr
+    
+    NodeClient --> RealtimeLoop
+    CamMgr --> RealtimeLoop
+    
+    RealtimeLoop --> DB
+    RealtimeLoop --> Files
+    RealtimeLoop --> WS
+    
+    API --> DB
+    API --> Files
+    
+    style Nodes fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000
+    style Camera fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Frontend fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    
+    style Discovery fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style NodeClient fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style CamMgr fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style RealtimeLoop fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style API fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style WS fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    
+    style DB fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
+    style Files fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
+```
+
+Der Backend-Datenfluss zeigt die Hauptkomponenten: **Discovery Loop** (gelb) erkennt neue Nodes/Kameras. **Node Client** (grün) kommuniziert mit Sensor-Nodes. **Realtime Loop** (gelb) erfasst Messwerte und pusht sie via **WebSocket**. Die **REST API** (grün) ermöglicht Zugriff auf historische Daten aus der **Database** (indigo).
+
+## 5.4 Frontend-Implementierung
+
+Die Web-UI basiert auf React/TypeScript und nutzt einen WebSocket-Client für Live-Updates. Evidence: sensorhub-frontend/src/services/ws.ts :: LiveWsClient :: WebSocket-Client mit Reconnect.
+
+## 5.5 Kamera-Integration
+
+Die Kamera-Integration erfolgt über einen Windows-C#-Worker, der JPEG-Frames im FRAM-Binärprotokoll an den Hub streamt. Evidence: sensorhub-backend/worker/Program.cs :: WriteFrame :: FRAM-Header + JPEG-Payload; Evidence: sensorhub-backend/app/camera_worker_manager.py :: _read_worker_frame_bytes :: FRAM-Parsing im Backend.
+
+**Foto-Capture:** Das Backend speichert Fotos zyklisch oder per manueller Auslösung. Evidence: sensorhub-backend/app/camera_streaming.py :: photo_capture_loop/capture_photo_now :: Fotoaufnahme.
+
+## 5.6 Fehlerbehandlung & Logging
+
+Backend-Events werden strukturiert geloggt (z.B. Scan- und Fehlerereignisse). Evidence: sensorhub-backend/app/utils/logging.py :: log_event :: JSON-Logeinträge.
+
+Nodes werden bei fehlendem Kontakt als offline markiert. Evidence: sensorhub-backend/app/nodes.py :: mark_nodes_offline :: Offline-Markierung.
+# 5 Implementierung
+
+Dieses Kapitel beschreibt die konkrete Umsetzung des Systems, getrennt nach Hardwarestatus und Softwarekomponenten.
+
+## 5.1 Hardware-Entwicklung
+
+Die Hardware befindet sich im Prototypenstadium; die physische PCB ist noch nicht verfügbar. [HARDWARE-NOT-AVAILABLE-YET]
+
+Die Software ist für Sensor-Nodes auf Basis des Raspberry Pi Pico (RP2040) ausgelegt. Evidence: sensornode-firmware/src/main.cpp :: FW_VERSION :: Firmware-Version "pico-0.1.0".
+
+## 5.2 Firmware-Implementierung (Sensor-Node)
+
+Die Firmware liest pH-, EC- und Temperaturwerte, wendet Kalibrierung an und stellt Messwerte über ein JSON-Line-Protokoll zur Verfügung. Evidence: sensornode-firmware/src/main.cpp :: handleGetAll/sendJson :: Messwerte werden per Serial JSON ausgegeben.
+
+**ADC und Sensorpins (RP2040):** pH an GPIO28 (ADC2), EC an GPIO26 (ADC0), Temperatur an GPIO17 (OneWire). Evidence: sensornode-firmware/src/main.cpp :: PH_PIN/EC_PIN/TEMP_PIN :: Pin-Zuordnung.
+
+**Kalibrierung:** pH 3-Punkt, EC 2-Punkt, jeweils stückweise linear. Evidence: sensornode-firmware/src/main.cpp :: applyPhCalibration/applyEcCalibration :: Kalibrierlogik.
+
+**Smoothing:** Mittelung über ein Zeitfenster mit ringförmigem Sample-Buffer. Evidence: sensornode-firmware/src/main.cpp :: computeSmoothed :: Glättungsfunktion.
+
+**Auto-Discovery:** Die Node sendet `hello`-Nachrichten bei Verbindungsverlust. Evidence: sensornode-firmware/src/main.cpp :: HELLO_RETRY_INTERVAL_MS/sendHello :: Hello-Retry.
+
+**Debug-Modus:** Simulierte Werte können per `set_mode` aktiviert werden. Evidence: sensornode-firmware/src/main.cpp :: handleSetMode/updateDebugValues :: Debug-Logik.
+
+**Abbildung 5.1: Node-Zustandsautomat (vereinfacht)**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    
+    Disconnected --> HelloSent: Power On
+    HelloSent --> Registered: hello_ack received
+    HelloSent --> HelloSent: Timeout (retry)
+    
+    Registered --> RealMode: Default
+    Registered --> DebugMode: set_mode(debug)
+    
+    RealMode --> Idle: Ready
+    Idle --> Processing: get_all
+    Processing --> Idle: Response sent
+    
+    DebugMode --> WaitingCmd: Ready
+    WaitingCmd --> WaitingCmd: set_values
+    
+    RealMode --> DebugMode: set_mode(debug)
+    DebugMode --> RealMode: set_mode(real)
+    
+    Registered --> Disconnected: Connection Lost
+    Disconnected --> HelloSent: Auto-Retry (5s)
+    
+    style Disconnected fill:#ffebee,stroke:#e53935,stroke-width:2px,color:#000
+    style HelloSent fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style Registered fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style RealMode fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    style DebugMode fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Idle fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style Processing fill:#e3f2fd,stroke:#1e88e5,stroke-width:1px,color:#000
+    style WaitingCmd fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,color:#000
+```
+
+Der Node-Zustandsautomat zeigt die Hauptzustände: **Disconnected** (rot) → **HelloSent** (gelb) → **Registered** (grün) → **RealMode** (blau) oder **DebugMode** (orange). Im RealMode werden Sensormessungen durchgeführt, im DebugMode können Testwerte gesetzt werden.
+
+## 5.3 Backend-Implementierung
+
+Das Backend ist eine FastAPI-Anwendung mit SQLite-Persistenz, Hintergrund-Loops und REST/WS-Schnittstellen. Evidence: sensorhub-backend/app/main.py :: FastAPI app + on_startup :: App-Setup und Loop-Start; Evidence: sensorhub-backend/app/db.py :: init_db :: SQLite-Initialisierung.
+
+**Node-Discovery:** Serieller Port-Scan identifiziert RP2040-Devices und führt einen Hello-Handshake aus. Evidence: sensorhub-backend/app/nodes.py :: node_discovery_loop/_handshake :: Discovery- und Handshake-Logik.
+
+**Readings-Capture:** Periodische Erfassung nach Setup-Intervallen, Speicherung in SQLite. Evidence: sensorhub-backend/app/realtime_updates.py :: readings_capture_loop :: Intervall-Capture.
+
+**WebSocket Live-Updates:** Pro Setup wird ein Polling-Task gestartet, der Live-Readings sendet. Evidence: sensorhub-backend/app/realtime_updates.py :: LiveManager._poll_setup :: Live-Streaming.
+
+**Abbildung 5.2: Backend-Datenfluss (vereinfacht)**
+
+```mermaid
+flowchart LR
+    Nodes["Sensor Nodes"]
+    Camera["USB Camera"]
+    Frontend["Frontend"]
+    
+    Discovery["Discovery<br/>Loop"]
+    NodeClient["Node<br/>Client"]
+    CamMgr["Camera<br/>Manager"]
+    RealtimeLoop["Realtime<br/>Loop"]
+    API["REST<br/>API"]
+    WS["Web-<br/>Socket"]
+    
+    DB[("Database")]
+    Files["Files"]
+    
+    Nodes -->|Serial/JSON| NodeClient
+    Camera -->|USB| CamMgr
+    Frontend -->|HTTP| API
+    Frontend -->|WS| WS
+    
+    Discovery -.-> NodeClient
+    Discovery -.-> CamMgr
+    
+    NodeClient --> RealtimeLoop
+    CamMgr --> RealtimeLoop
+    
+    RealtimeLoop --> DB
+    RealtimeLoop --> Files
+    RealtimeLoop --> WS
+    
+    API --> DB
+    API --> Files
+    
+    style Nodes fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#000
+    style Camera fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style Frontend fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#000
+    
+    style Discovery fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style NodeClient fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style CamMgr fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#000
+    style RealtimeLoop fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    style API fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#000
+    style WS fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#000
+    
+    style DB fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
+    style Files fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px,color:#000
+```
+
+Der Backend-Datenfluss zeigt die Hauptkomponenten: **Discovery Loop** (gelb) erkennt neue Nodes/Kameras. **Node Client** (grün) kommuniziert mit Sensor-Nodes. **Realtime Loop** (gelb) erfasst Messwerte und pusht sie via **WebSocket**. Die **REST API** (grün) ermöglicht Zugriff auf historische Daten aus der **Database** (indigo).
+
+## 5.4 Frontend-Implementierung
+
+Die Web-UI basiert auf React/TypeScript und nutzt einen WebSocket-Client für Live-Updates. Evidence: sensorhub-frontend/src/services/ws.ts :: LiveWsClient :: WebSocket-Client mit Reconnect.
+
+## 5.5 Kamera-Integration
+
+Die Kamera-Integration erfolgt über einen Windows-C#-Worker, der JPEG-Frames im FRAM-Binärprotokoll an den Hub streamt. Evidence: sensorhub-backend/worker/Program.cs :: WriteFrame :: FRAM-Header + JPEG-Payload; Evidence: sensorhub-backend/app/camera_worker_manager.py :: _read_worker_frame_bytes :: FRAM-Parsing im Backend.
+
+**Foto-Capture:** Das Backend speichert Fotos zyklisch oder per manueller Auslösung. Evidence: sensorhub-backend/app/camera_streaming.py :: photo_capture_loop/capture_photo_now :: Fotoaufnahme.
+
+## 5.6 Fehlerbehandlung & Logging
+
+Backend-Events werden strukturiert geloggt (z.B. Scan- und Fehlerereignisse). Evidence: sensorhub-backend/app/utils/logging.py :: log_event :: JSON-Logeinträge.
+
+Nodes werden bei fehlendem Kontakt als offline markiert. Evidence: sensorhub-backend/app/nodes.py :: mark_nodes_offline :: Offline-Markierung.
